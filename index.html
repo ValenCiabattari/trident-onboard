@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trident Onboard Comparator</title>
+    <meta
+      name="description"
+      content="A lightweight demo for comparing onboard racing laps side by side."
+    />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231f2326'/%3E%3Cpath d='M6 22 15 5h4l-6 11h9l-5 11h-4l3-8H9z' fill='%23e23b3b'/%3E%3Cpath d='M22 6h4v20h-4z' fill='%230b8793'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="src/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Trident demo</p>
+          <h1>Onboard lap comparator</h1>
+        </div>
+        <div class="topbar-actions">
+          <label class="button primary" for="videoInput">Load onboard videos</label>
+          <input id="videoInput" type="file" accept="video/*" multiple />
+          <button id="exportBtn" class="button secondary" type="button">Export notes</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="library-panel" aria-label="Loaded video library">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Sources</p>
+              <h2>Video library</h2>
+            </div>
+            <span id="sourceCount" class="count-pill">0</span>
+          </div>
+
+          <div id="dropZone" class="drop-zone">
+            <strong>Drop onboard files here</strong>
+            <span>MP4, MOV, WebM, or any browser-supported video.</span>
+          </div>
+
+          <div id="sourceList" class="source-list empty-state">
+            <p>Load at least two onboard videos to start comparing laps.</p>
+          </div>
+        </aside>
+
+        <section class="comparison-panel" aria-label="Lap comparison workspace">
+          <div class="control-strip">
+            <div class="playback-controls">
+              <button id="restartBtn" class="icon-button" type="button" title="Restart lap">
+                0:00
+              </button>
+              <button id="stepBackBtn" class="icon-button" type="button" title="Step back">
+                -1f
+              </button>
+              <button id="playBtn" class="button primary play-button" type="button">Play</button>
+              <button id="stepForwardBtn" class="icon-button" type="button" title="Step forward">
+                +1f
+              </button>
+            </div>
+
+            <div class="timeline-control">
+              <div class="time-readout">
+                <span id="currentTime">0:00.000</span>
+                <span id="lapLength">0:00.000</span>
+              </div>
+              <input id="timeline" type="range" min="0" max="1" step="0.001" value="0" />
+            </div>
+
+            <div class="compact-controls">
+              <label>
+                Speed
+                <select id="speedSelect">
+                  <option value="0.25">0.25x</option>
+                  <option value="0.5">0.5x</option>
+                  <option value="1" selected>1x</option>
+                  <option value="1.5">1.5x</option>
+                  <option value="2">2x</option>
+                </select>
+              </label>
+              <label class="checkbox-line">
+                <input id="loopToggle" type="checkbox" checked />
+                Loop
+              </label>
+            </div>
+          </div>
+
+          <div class="video-grid">
+            <article class="video-stage" data-slot="A">
+              <div class="stage-header">
+                <div>
+                  <p class="eyebrow">Reference lap</p>
+                  <h2 id="slotATitle">Slot A</h2>
+                </div>
+                <span id="slotAMeta" class="stage-meta">No source selected</span>
+              </div>
+              <video id="videoA" muted playsinline></video>
+              <div class="slot-controls">
+                <label>
+                  Sync offset
+                  <input id="offsetA" type="number" step="0.01" value="0" />
+                </label>
+                <button id="markAStart" class="button secondary" type="button">Set start</button>
+                <button id="markAEnd" class="button secondary" type="button">Set end</button>
+              </div>
+            </article>
+
+            <article class="video-stage" data-slot="B">
+              <div class="stage-header">
+                <div>
+                  <p class="eyebrow">Comparison lap</p>
+                  <h2 id="slotBTitle">Slot B</h2>
+                </div>
+                <span id="slotBMeta" class="stage-meta">No source selected</span>
+              </div>
+              <video id="videoB" muted playsinline></video>
+              <div class="slot-controls">
+                <label>
+                  Sync offset
+                  <input id="offsetB" type="number" step="0.01" value="0" />
+                </label>
+                <button id="markBStart" class="button secondary" type="button">Set start</button>
+                <button id="markBEnd" class="button secondary" type="button">Set end</button>
+              </div>
+            </article>
+          </div>
+
+          <section class="insight-panel" aria-label="Comparison notes">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Review</p>
+                <h2>Driving notes</h2>
+              </div>
+              <button id="addNoteBtn" class="button secondary" type="button">Add note at time</button>
+            </div>
+            <div class="note-inputs">
+              <select id="noteType">
+                <option>Braking</option>
+                <option>Turn-in</option>
+                <option>Apex</option>
+                <option>Throttle</option>
+                <option>Line</option>
+                <option>Other</option>
+              </select>
+              <input id="noteText" type="text" placeholder="Example: Driver B releases brake earlier into T4" />
+            </div>
+            <div id="notesList" class="notes-list empty-state">
+              <p>Use notes to capture differences while scrubbing through the lap.</p>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="src/app.js"></script>
+  </body>
+</html>
