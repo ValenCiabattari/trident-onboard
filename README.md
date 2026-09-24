@@ -1,6 +1,6 @@
 # Trident Onboard Comparator
 
-Local demo app for cutting complete onboard sessions into laps and comparing them side by side.
+Browser app for cutting complete onboard sessions into laps and comparing them side by side.
 
 ## What it does
 
@@ -19,7 +19,7 @@ Local demo app for cutting complete onboard sessions into laps and comparing the
 - Save an individual lap as a local video copy.
 - Export a JSON notes file for review.
 
-The demo runs completely in the browser. It does not upload videos anywhere.
+The app runs completely in the browser. It does not upload videos anywhere.
 
 ## How to run
 
@@ -29,7 +29,7 @@ Chrome or Edge is recommended. Supported input formats depend on the browser cod
 
 Saving a lap copy records the selected interval locally at up to 30 fps and 1080p. It uses an audio-capable H.264/MP4 format when the browser supports it and VP8/Opus WebM otherwise. The export panel confirms whether an audio track was detected. The export runs in real time, so a 90-second lap takes approximately 90 seconds to save. Keep the tab visible until the download begins; the export pauses safely when the tab is hidden.
 
-## Suggested demo flow
+## Suggested workflow
 
 1. Load a complete onboard session.
 2. Find the first finish-line crossing and click **Mark finish-line crossing**.
@@ -41,6 +41,10 @@ Saving a lap copy records the selected interval locally at up to 30 fps and 1080
 
 Alternatively, open **Compare** and choose **Load ready-made laps** to select two complete lap videos without using the cutter. The first file becomes the reference and the second becomes the comparison. Lap names and comments are remembered on this computer when the same files are loaded again.
 
-## Sharing the demo
+## Sharing the app
 
-Send the complete `Trident_Onboard_Demo.zip` file. The recipient must extract the ZIP and open `index.html` in Chrome or Edge. Videos are selected from their own computer and are never included in the demo package or uploaded.
+The published Sites URL is access-controlled. Add a viewer by email to grant access, and remove that viewer when the test is finished. Videos are selected from each user's computer and are never uploaded.
+
+## Build
+
+Run `npm run build` to create the static `dist` directory used for publication.
