@@ -4,15 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Trident Onboard Comparator</title>
-    <meta
-      name="description"
-      content="A lightweight demo for comparing onboard racing laps side by side."
-    />
-    <link
-      rel="icon"
-      type="image/svg+xml"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231f2326'/%3E%3Cpath d='M6 22 15 5h4l-6 11h9l-5 11h-4l3-8H9z' fill='%23e23b3b'/%3E%3Cpath d='M22 6h4v20h-4z' fill='%230b8793'/%3E%3C/svg%3E"
-    />
+    <meta name="description" content="Cut complete onboard sessions into laps and compare them side by side." />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231f2326'/%3E%3Cpath d='M6 22 15 5h4l-6 11h9l-5 11h-4l3-8H9z' fill='%23e23b3b'/%3E%3Cpath d='M22 6h4v20h-4z' fill='%230b8793'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="src/styles.css" />
   </head>
   <body>
@@ -20,141 +13,154 @@
       <header class="topbar">
         <div>
           <p class="eyebrow">Trident demo</p>
-          <h1>Onboard lap comparator</h1>
+          <h1>Onboard lap workspace</h1>
         </div>
         <div class="topbar-actions">
-          <label class="button primary" for="videoInput">Load onboard videos</label>
+          <label class="button primary" for="videoInput">Load onboard video</label>
           <input id="videoInput" type="file" accept="video/*" multiple />
-          <button id="exportBtn" class="button secondary" type="button">Export notes</button>
+          <button id="exportBtn" class="button secondary" type="button">Export review</button>
         </div>
       </header>
 
-      <main class="workspace">
-        <aside class="library-panel" aria-label="Loaded video library">
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow">Sources</p>
-              <h2>Video library</h2>
-            </div>
-            <span id="sourceCount" class="count-pill">0</span>
-          </div>
+      <nav class="mode-tabs" aria-label="Workspace mode">
+        <button class="mode-tab is-active" data-view="cutter" type="button">Cut laps</button>
+        <button class="mode-tab" data-view="compare" type="button">Compare <span id="lapCountBadge" class="tab-count">0</span></button>
+      </nav>
 
-          <div id="dropZone" class="drop-zone">
-            <strong>Drop onboard files here</strong>
-            <span>MP4, MOV, WebM, or any browser-supported video.</span>
-          </div>
-
-          <div id="sourceList" class="source-list empty-state">
-            <p>Load at least two onboard videos to start comparing laps.</p>
-          </div>
-        </aside>
-
-        <section class="comparison-panel" aria-label="Lap comparison workspace">
-          <div class="control-strip">
-            <div class="playback-controls">
-              <button id="restartBtn" class="icon-button" type="button" title="Restart lap">
-                0:00
-              </button>
-              <button id="stepBackBtn" class="icon-button" type="button" title="Step back">
-                -1f
-              </button>
-              <button id="playBtn" class="button primary play-button" type="button">Play</button>
-              <button id="stepForwardBtn" class="icon-button" type="button" title="Step forward">
-                +1f
-              </button>
-            </div>
-
-            <div class="timeline-control">
-              <div class="time-readout">
-                <span id="currentTime">0:00.000</span>
-                <span id="lapLength">0:00.000</span>
-              </div>
-              <input id="timeline" type="range" min="0" max="1" step="0.001" value="0" />
-            </div>
-
-            <div class="compact-controls">
-              <label>
-                Speed
-                <select id="speedSelect">
-                  <option value="0.25">0.25x</option>
-                  <option value="0.5">0.5x</option>
-                  <option value="1" selected>1x</option>
-                  <option value="1.5">1.5x</option>
-                  <option value="2">2x</option>
-                </select>
-              </label>
-              <label class="checkbox-line">
-                <input id="loopToggle" type="checkbox" checked />
-                Loop
-              </label>
+      <main>
+        <section id="cutterView" class="view-panel" aria-label="Lap cutter">
+          <div id="cutterEmpty" class="cutter-empty">
+            <div id="dropZone" class="drop-zone">
+              <strong>Drop a complete onboard session here</strong>
+              <span>The video stays on this computer. Nothing is uploaded.</span>
+              <label class="button primary" for="videoInput">Choose video</label>
             </div>
           </div>
 
-          <div class="video-grid">
-            <article class="video-stage" data-slot="A">
-              <div class="stage-header">
-                <div>
-                  <p class="eyebrow">Reference lap</p>
-                  <h2 id="slotATitle">Slot A</h2>
+          <div id="cutterWorkspace" class="cutter-workspace" hidden>
+            <div class="session-bar">
+              <label>Session <select id="cutterSourceSelect"></select></label>
+              <div class="session-stat"><span>Duration</span><strong id="cutterDuration">0:00.000</strong></div>
+              <div class="session-stat session-progress"><span>Detected</span><strong id="detectedLapCount">0 laps</strong></div>
+            </div>
+
+            <div class="cutter-layout">
+              <section class="cutter-stage" aria-label="Session video">
+                <div class="video-wrap">
+                  <video id="cutterVideo" muted playsinline></video>
+                  <div class="video-clock" id="cutterClock">0:00.000</div>
                 </div>
-                <span id="slotAMeta" class="stage-meta">No source selected</span>
-              </div>
-              <video id="videoA" muted playsinline></video>
-              <div class="slot-controls">
-                <label>
-                  Sync offset
-                  <input id="offsetA" type="number" step="0.01" value="0" />
-                </label>
-                <button id="markAStart" class="button secondary" type="button">Set start</button>
-                <button id="markAEnd" class="button secondary" type="button">Set end</button>
-              </div>
-            </article>
 
-            <article class="video-stage" data-slot="B">
-              <div class="stage-header">
-                <div>
-                  <p class="eyebrow">Comparison lap</p>
-                  <h2 id="slotBTitle">Slot B</h2>
+                <div class="cutter-transport">
+                  <div class="transport-buttons">
+                    <button class="icon-button" id="cutterBackFive" type="button" title="Back 5 seconds">-5s</button>
+                    <button class="icon-button" id="cutterBackFrame" type="button" title="Previous frame">-1f</button>
+                    <button class="button secondary play-button" id="cutterPlay" type="button">Play</button>
+                    <button class="icon-button" id="cutterForwardFrame" type="button" title="Next frame">+1f</button>
+                    <button class="icon-button" id="cutterForwardFive" type="button" title="Forward 5 seconds">+5s</button>
+                  </div>
+                  <button class="button primary mark-crossing-button" id="markCrossingBtn" type="button">Mark finish-line crossing</button>
                 </div>
-                <span id="slotBMeta" class="stage-meta">No source selected</span>
-              </div>
-              <video id="videoB" muted playsinline></video>
-              <div class="slot-controls">
-                <label>
-                  Sync offset
-                  <input id="offsetB" type="number" step="0.01" value="0" />
-                </label>
-                <button id="markBStart" class="button secondary" type="button">Set start</button>
-                <button id="markBEnd" class="button secondary" type="button">Set end</button>
-              </div>
-            </article>
-          </div>
 
-          <section class="insight-panel" aria-label="Comparison notes">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Review</p>
-                <h2>Driving notes</h2>
+                <div class="session-timeline">
+                  <input id="cutterTimeline" type="range" min="0" max="1" step="0.001" value="0" />
+                  <div id="crossingMarkers" class="crossing-markers" aria-hidden="true"></div>
+                </div>
+
+                <section class="precision-panel" aria-label="Precision frames">
+                  <div class="precision-heading">
+                    <div><p class="eyebrow">Precision finder</p><h2>Pick the exact frame</h2></div>
+                    <label>Spacing
+                      <select id="precisionStep">
+                        <option value="2">2 seconds</option>
+                        <option value="0.5" selected>0.5 seconds</option>
+                        <option value="0.1">0.1 seconds</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div id="precisionStrip" class="precision-strip"><p>Select a session to generate nearby frames.</p></div>
+                </section>
+              </section>
+
+              <aside class="lap-builder" aria-label="Detected laps">
+                <div class="workflow-copy"><span class="step-number">1</span><div><strong>Find the first finish-line crossing</strong><p>Pause as the car crosses the line and mark it.</p></div></div>
+                <div class="workflow-copy"><span class="step-number">2</span><div><strong>Mark each next crossing</strong><p>Every new mark automatically creates a complete lap.</p></div></div>
+
+                <div class="lap-section-heading">
+                  <div><p class="eyebrow">Finish line</p><h2>Crossings</h2></div>
+                  <button id="undoCrossingBtn" class="text-button" type="button">Undo last</button>
+                </div>
+                <div id="crossingList" class="crossing-list empty-state"><p>No crossings marked yet.</p></div>
+
+                <div class="lap-section-heading"><div><p class="eyebrow">Ready to use</p><h2>Created laps</h2></div></div>
+                <div id="lapList" class="lap-list empty-state"><p>Two finish-line crossings create the first lap.</p></div>
+              </aside>
+            </div>
+          </div>
+        </section>
+
+        <section id="compareView" class="view-panel" aria-label="Lap comparison" hidden>
+          <section class="comparison-panel">
+            <div class="control-strip">
+              <div class="playback-controls">
+                <button id="restartBtn" class="icon-button" type="button" title="Restart lap">0:00</button>
+                <button id="stepBackBtn" class="icon-button" type="button" title="Step back">-1f</button>
+                <button id="playBtn" class="button primary play-button" type="button">Play</button>
+                <button id="stepForwardBtn" class="icon-button" type="button" title="Step forward">+1f</button>
               </div>
-              <button id="addNoteBtn" class="button secondary" type="button">Add note at time</button>
+              <div class="timeline-control">
+                <div class="time-readout"><span id="currentTime">0:00.000</span><span id="lapLength">0:00.000</span></div>
+                <input id="timeline" type="range" min="0" max="1" step="0.001" value="0" />
+              </div>
+              <div class="compact-controls">
+                <label>Speed
+                  <select id="speedSelect"><option value="0.25">0.25x</option><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="1.5">1.5x</option><option value="2">2x</option></select>
+                </label>
+                <label class="checkbox-line"><input id="loopToggle" type="checkbox" checked /> Loop</label>
+              </div>
             </div>
-            <div class="note-inputs">
-              <select id="noteType">
-                <option>Braking</option>
-                <option>Turn-in</option>
-                <option>Apex</option>
-                <option>Throttle</option>
-                <option>Line</option>
-                <option>Other</option>
-              </select>
-              <input id="noteText" type="text" placeholder="Example: Driver B releases brake earlier into T4" />
+
+            <div class="video-grid">
+              <article class="video-stage" data-slot="A">
+                <div class="stage-header"><div><p class="eyebrow">Reference lap</p><h2 id="slotATitle">Slot A</h2></div><span id="slotAMeta" class="stage-meta">Choose a created lap</span></div>
+                <video id="videoA" muted playsinline></video>
+                <div class="slot-controls">
+                  <label>Lap <select id="slotASelect"></select></label>
+                  <label>Sync offset <input id="offsetA" type="number" step="0.01" value="0" /></label>
+                  <button id="markAStart" class="button secondary" type="button">Set start</button>
+                  <button id="markAEnd" class="button secondary" type="button">Set end</button>
+                </div>
+              </article>
+
+              <article class="video-stage" data-slot="B">
+                <div class="stage-header"><div><p class="eyebrow">Comparison lap</p><h2 id="slotBTitle">Slot B</h2></div><span id="slotBMeta" class="stage-meta">Choose a created lap</span></div>
+                <video id="videoB" muted playsinline></video>
+                <div class="slot-controls">
+                  <label>Lap <select id="slotBSelect"></select></label>
+                  <label>Sync offset <input id="offsetB" type="number" step="0.01" value="0" /></label>
+                  <button id="markBStart" class="button secondary" type="button">Set start</button>
+                  <button id="markBEnd" class="button secondary" type="button">Set end</button>
+                </div>
+              </article>
             </div>
-            <div id="notesList" class="notes-list empty-state">
-              <p>Use notes to capture differences while scrubbing through the lap.</p>
-            </div>
+
+            <section class="insight-panel" aria-label="Comparison notes">
+              <div class="panel-heading"><div><p class="eyebrow">Review</p><h2>Driving notes</h2></div><button id="addNoteBtn" class="button secondary" type="button">Add note at time</button></div>
+              <div class="note-inputs">
+                <select id="noteType"><option>Braking</option><option>Turn-in</option><option>Apex</option><option>Throttle</option><option>Line</option><option>Other</option></select>
+                <input id="noteText" type="text" placeholder="Example: Driver B releases brake earlier into T4" />
+              </div>
+              <div id="notesList" class="notes-list empty-state"><p>Use notes to capture differences while scrubbing through the lap.</p></div>
+            </section>
           </section>
         </section>
       </main>
+    </div>
+
+    <div id="exportToast" class="export-toast" hidden>
+      <div><strong id="exportTitle">Preparing lap copy</strong><span id="exportStatus">0%</span></div>
+      <progress id="exportProgress" max="100" value="0"></progress>
+      <button id="cancelExportBtn" class="text-button" type="button">Cancel</button>
     </div>
 
     <script src="src/app.js"></script>
