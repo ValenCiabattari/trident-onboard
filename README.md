@@ -11,6 +11,7 @@ Local demo app for cutting complete onboard sessions into laps and comparing the
 - Send any created lap directly to comparison Slot A or Slot B.
 - Give every reference and comparison lap a custom name.
 - Play, pause, scrub, loop, step frame by frame, and adjust playback speed.
+- Enable sound in the cutter or choose Reference/Comparison audio during review.
 - Apply per-video sync offsets.
 - Add driving notes at the current lap time.
 - Keep notes separated by lap pairing and auto-save them in the browser.
@@ -26,7 +27,7 @@ Open `index.html` in a modern browser.
 
 Chrome or Edge is recommended. Supported input formats depend on the browser codec support.
 
-Saving a lap copy records the selected interval locally at up to 30 fps and 1080p. It uses H.264/MP4 when the browser supports it and VP8/WebM otherwise. The export runs in real time, so a 90-second lap takes approximately 90 seconds to save. Keep the tab visible until the download begins; the export pauses safely when the tab is hidden.
+Saving a lap copy records the selected interval locally at up to 30 fps and 1080p. It uses an audio-capable H.264/MP4 format when the browser supports it and VP8/Opus WebM otherwise. The export panel confirms whether an audio track was detected. The export runs in real time, so a 90-second lap takes approximately 90 seconds to save. Keep the tab visible until the download begins; the export pauses safely when the tab is hidden.
 
 ## Suggested demo flow
 
@@ -39,3 +40,7 @@ Saving a lap copy records the selected interval locally at up to 30 fps and 1080
 7. Add driving notes and export the review when finished.
 
 Alternatively, open **Compare** and choose **Load ready-made laps** to select two complete lap videos without using the cutter. The first file becomes the reference and the second becomes the comparison. Lap names and comments are remembered on this computer when the same files are loaded again.
+
+## Sharing the demo
+
+Send the complete `Trident_Onboard_Demo.zip` file. The recipient must extract the ZIP and open `index.html` in Chrome or Edge. Videos are selected from their own computer and are never included in the demo package or uploaded.

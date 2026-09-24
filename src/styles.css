@@ -99,6 +99,7 @@ select, input[type="number"], .slot-controls input[type="text"], .note-inputs in
 .video-clock { position: absolute; right: 12px; bottom: 12px; border-radius: 5px; padding: 7px 10px; background: rgba(0, 0, 0, 0.78); color: #fff; font-size: 0.92rem; font-weight: 850; font-variant-numeric: tabular-nums; }
 .cutter-transport { align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px 8px; }
 .transport-buttons { align-items: center; gap: 7px; }
+.cutter-sound-control { padding: 0 8px; }
 .mark-crossing-button { min-height: 46px; }
 .session-timeline { position: relative; padding: 6px 14px 14px; }
 .session-timeline input { width: 100%; accent-color: var(--red); }
@@ -179,6 +180,8 @@ select, input[type="number"], .slot-controls input[type="text"], .note-inputs in
 .export-toast > div { justify-content: space-between; gap: 12px; }
 .export-toast span { color: var(--muted); font-weight: 800; }
 .export-toast video { width: 100%; aspect-ratio: 16 / 9; margin-top: 11px; border-radius: 6px; object-fit: contain; }
+.export-audio-status { margin-top: 8px; color: var(--teal); font-size: 0.82rem; font-weight: 800; }
+.export-audio-status.is-warning { color: var(--red-dark); }
 .export-hint { margin-top: 8px; color: var(--muted); font-size: 0.82rem; line-height: 1.4; }
 .export-canvas { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .export-toast progress { width: 100%; height: 10px; margin: 12px 0 8px; accent-color: var(--teal); }

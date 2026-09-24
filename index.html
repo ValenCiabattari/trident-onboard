@@ -47,7 +47,7 @@
             <div class="cutter-layout">
               <section class="cutter-stage" aria-label="Session video">
                 <div class="video-wrap">
-                  <video id="cutterVideo" muted playsinline></video>
+                  <video id="cutterVideo" playsinline></video>
                   <div class="video-clock" id="cutterClock">0:00.000</div>
                 </div>
 
@@ -59,6 +59,10 @@
                     <button class="icon-button" id="cutterForwardFrame" type="button" title="Next frame">+1f</button>
                     <button class="icon-button" id="cutterForwardFive" type="button" title="Forward 5 seconds">+5s</button>
                   </div>
+                  <label class="checkbox-line cutter-sound-control">
+                    <input id="cutterSoundToggle" type="checkbox" checked />
+                    Sound
+                  </label>
                   <button class="button primary mark-crossing-button" id="markCrossingBtn" type="button">Mark finish-line crossing</button>
                 </div>
 
@@ -126,6 +130,13 @@
                 <input id="timeline" type="range" min="0" max="1" step="0.001" value="0" />
               </div>
               <div class="compact-controls">
+                <label>Audio
+                  <select id="audioSourceSelect">
+                    <option value="A" selected>Reference</option>
+                    <option value="B">Comparison</option>
+                    <option value="muted">Muted</option>
+                  </select>
+                </label>
                 <label>Speed
                   <select id="speedSelect"><option value="0.25">0.25x</option><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="1.5">1.5x</option><option value="2">2x</option></select>
                 </label>
@@ -186,6 +197,7 @@
     <div id="exportToast" class="export-toast" hidden>
       <div><strong id="exportTitle">Preparing lap copy</strong><span id="exportStatus">0%</span></div>
       <video id="exportPreview" muted playsinline></video>
+      <p id="exportAudioStatus" class="export-audio-status">Checking audio track...</p>
       <p class="export-hint">Smooth export up to 30 fps. Keep this tab visible until the download starts.</p>
       <progress id="exportProgress" max="100" value="0"></progress>
       <button id="cancelExportBtn" class="text-button" type="button">Cancel</button>

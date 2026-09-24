@@ -22,6 +22,8 @@ const state = {
   reviews: storedWorkspace.reviews || {},
   slotA: null,
   slotB: null,
+  cutterSound: true,
+  audioSource: "A",
   relTime: 0,
   isPlaying: false,
   baseRelTime: 0,
@@ -45,8 +47,9 @@ const els = Object.fromEntries(
     "slotBMeta", "slotASelect", "slotBSelect", "offsetA", "offsetB", "markAStart",
     "markAEnd", "markBStart", "markBEnd", "addNoteBtn", "noteType", "noteText",
     "notesList", "exportBtn", "exportToast", "exportTitle", "exportStatus", "exportProgress",
-    "cancelExportBtn", "exportPreview", "comparisonVideoInput", "readyLapCount", "nameA", "nameB",
+    "cancelExportBtn", "exportPreview", "exportAudioStatus", "comparisonVideoInput", "readyLapCount", "nameA", "nameB",
     "reviewPairLabel", "notesSaveStatus", "saveCommentsBtn",
+    "cutterSoundToggle", "audioSourceSelect",
   ].map((id) => [id, document.querySelector(`#${id}`)]),
 );
 
@@ -327,6 +330,7 @@ function loadCutterSource() {
   if (!source) return;
   if (els.cutterVideo.dataset.sourceId !== source.id) {
     els.cutterVideo.pause();
+    els.cutterVideo.muted = !state.cutterSound;
     els.cutterVideo.src = source.url;
     els.cutterVideo.dataset.sourceId = source.id;
     els.cutterVideo.load();
@@ -521,13 +525,18 @@ function setVideoForSlot(slot) {
     video.src = lap.url;
     video.dataset.lapId = lap.id;
   }
-  video.muted = true;
+  video.muted = state.audioSource !== slot;
   video.playbackRate = state.speed;
   title.textContent = lap.name;
   meta.textContent = `${lap.origin} - ${formatTime(lap.duration)}`;
   offsetInput.value = String(state.adjustments[lap.id]?.[`offset${slot}`] || 0);
   nameInput.value = lap.name;
   nameInput.disabled = false;
+}
+
+function applyComparisonAudio() {
+  els.videoA.muted = state.audioSource !== "A";
+  els.videoB.muted = state.audioSource !== "B";
 }
 
 function updateVideos(hardSync = false) {
@@ -595,9 +604,11 @@ function renderNotes() {
 function renderComparison() {
   chooseDefaultSlots();
   els.readyLapCount.textContent = `${state.readyLaps.length} direct ${state.readyLaps.length === 1 ? "upload" : "uploads"}`;
+  els.audioSourceSelect.value = state.audioSource;
   renderSlotSelectors();
   setVideoForSlot("A");
   setVideoForSlot("B");
+  applyComparisonAudio();
   updateTimeline();
   renderNotes();
   updateVideos(true);
@@ -728,19 +739,27 @@ function setComparisonMarker(slot, marker) {
   renderComparison();
 }
 
-function supportedRecordingTypes() {
-  const types = [
+function supportedRecordingTypes(hasAudio) {
+  const audioTypes = [
     "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
-    "video/mp4;codecs=avc1.42E01E",
+    "video/mp4;codecs=avc1.42E01E,opus",
     "video/webm;codecs=vp8,opus",
+    "video/webm",
+    "video/mp4",
+  ];
+  const videoTypes = [
+    "video/mp4;codecs=avc1.42E01E",
+    "video/mp4",
     "video/webm;codecs=vp8",
     "video/webm",
   ];
+  const types = hasAudio ? audioTypes : videoTypes;
   return types.filter((type) => window.MediaRecorder?.isTypeSupported(type));
 }
 
 function createExportRecorder(stream) {
-  for (const mimeType of supportedRecordingTypes()) {
+  const hasAudio = stream.getAudioTracks().length > 0;
+  for (const mimeType of supportedRecordingTypes(hasAudio)) {
     try {
       const recorder = new MediaRecorder(stream, {
         mimeType,
@@ -775,7 +794,7 @@ async function exportLapCopy(lap) {
   const source = getSource(lap.sourceId);
   const captureMethod = HTMLMediaElement.prototype.captureStream || HTMLMediaElement.prototype.mozCaptureStream;
   const canCaptureCanvas = typeof HTMLCanvasElement.prototype.captureStream === "function";
-  if (!source || !captureMethod || !canCaptureCanvas || !window.MediaRecorder || !supportedRecordingTypes().length) {
+  if (!source || !captureMethod || !canCaptureCanvas || !window.MediaRecorder || !supportedRecordingTypes(false).length) {
     window.alert("This browser cannot create a local video copy. Use the latest Chrome or Edge.");
     return;
   }
@@ -798,6 +817,8 @@ async function exportLapCopy(lap) {
   els.exportToast.hidden = false;
   els.exportTitle.textContent = `${source.name} - ${lap.name}`;
   els.exportStatus.textContent = "Preparing video...";
+  els.exportAudioStatus.textContent = "Checking audio track...";
+  els.exportAudioStatus.classList.remove("is-warning");
   els.exportProgress.value = 0;
 
   try {
@@ -826,9 +847,16 @@ async function exportLapCopy(lap) {
     const canvasStream = canvas.captureStream(30);
     job.sourceStream = sourceStream;
     job.canvasStream = canvasStream;
+    const audioTracks = sourceStream.getAudioTracks();
+    audioTracks.forEach((track) => { track.enabled = true; });
+    els.exportAudioStatus.textContent = audioTracks.length
+      ? "Audio track detected and included"
+      : "No audio track detected in the source video";
+    els.exportAudioStatus.classList.toggle("is-warning", !audioTracks.length);
+
     const stream = new MediaStream([
       ...canvasStream.getVideoTracks(),
-      ...sourceStream.getAudioTracks(),
+      ...audioTracks,
     ]);
     job.stream = stream;
 
@@ -972,6 +1000,10 @@ els.cutterVideo.addEventListener("pause", () => { els.cutterPlay.textContent = "
 els.cutterPlay.addEventListener("click", () => {
   if (els.cutterVideo.paused) els.cutterVideo.play(); else els.cutterVideo.pause();
 });
+els.cutterSoundToggle.addEventListener("change", (event) => {
+  state.cutterSound = event.target.checked;
+  els.cutterVideo.muted = !state.cutterSound;
+});
 els.cutterBackFive.addEventListener("click", () => seekCutter(els.cutterVideo.currentTime - 5));
 els.cutterForwardFive.addEventListener("click", () => seekCutter(els.cutterVideo.currentTime + 5));
 els.cutterBackFrame.addEventListener("click", () => seekCutter(els.cutterVideo.currentTime - 1 / 30));
@@ -1045,6 +1077,10 @@ els.speedSelect.addEventListener("change", (event) => {
   updateVideos(true);
 });
 els.loopToggle.addEventListener("change", (event) => { state.loop = event.target.checked; });
+els.audioSourceSelect.addEventListener("change", (event) => {
+  state.audioSource = event.target.value;
+  applyComparisonAudio();
+});
 els.offsetA.addEventListener("input", () => {
   const lap = lapForSlot("A");
   if (lap) ensureAdjustment(lap.id).offsetA = parseNumber(els.offsetA.value, 0);

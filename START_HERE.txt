@@ -1,0 +1,8 @@
+TRIDENT ONBOARD DEMO
+
+1. Extract the complete ZIP file to a folder.
+2. Open index.html with the latest Chrome or Edge.
+3. Use Cut laps for a complete session, or Compare to load two finished laps.
+
+Keep the src folder next to index.html.
+Videos remain on your computer and are never uploaded.
