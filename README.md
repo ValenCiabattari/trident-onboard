@@ -26,7 +26,7 @@ Open `index.html` in a modern browser.
 
 Chrome or Edge is recommended. Supported input formats depend on the browser codec support.
 
-Saving a lap copy records the selected interval locally as WebM (or MP4 when the browser supports it). The export runs in real time, so a 90-second lap takes approximately 90 seconds to save. Keep the page open until the download begins.
+Saving a lap copy records the selected interval locally at up to 30 fps and 1080p. It uses H.264/MP4 when the browser supports it and VP8/WebM otherwise. The export runs in real time, so a 90-second lap takes approximately 90 seconds to save. Keep the tab visible until the download begins; the export pauses safely when the tab is hidden.
 
 ## Suggested demo flow
 

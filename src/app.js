@@ -45,7 +45,7 @@ const els = Object.fromEntries(
     "slotBMeta", "slotASelect", "slotBSelect", "offsetA", "offsetB", "markAStart",
     "markAEnd", "markBStart", "markBEnd", "addNoteBtn", "noteType", "noteText",
     "notesList", "exportBtn", "exportToast", "exportTitle", "exportStatus", "exportProgress",
-    "cancelExportBtn", "comparisonVideoInput", "readyLapCount", "nameA", "nameB",
+    "cancelExportBtn", "exportPreview", "comparisonVideoInput", "readyLapCount", "nameA", "nameB",
     "reviewPairLabel", "notesSaveStatus", "saveCommentsBtn",
   ].map((id) => [id, document.querySelector(`#${id}`)]),
 );
@@ -728,9 +728,40 @@ function setComparisonMarker(slot, marker) {
   renderComparison();
 }
 
-function recordingMimeType() {
-  const types = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"];
-  return types.find((type) => window.MediaRecorder?.isTypeSupported(type)) || "";
+function supportedRecordingTypes() {
+  const types = [
+    "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+    "video/mp4;codecs=avc1.42E01E",
+    "video/webm;codecs=vp8,opus",
+    "video/webm;codecs=vp8",
+    "video/webm",
+  ];
+  return types.filter((type) => window.MediaRecorder?.isTypeSupported(type));
+}
+
+function createExportRecorder(stream) {
+  for (const mimeType of supportedRecordingTypes()) {
+    try {
+      const recorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: 10_000_000,
+        audioBitsPerSecond: 192_000,
+      });
+      return { recorder, mimeType };
+    } catch {
+      // Try the next browser-supported container and codec.
+    }
+  }
+  return null;
+}
+
+function exportDimensions(video) {
+  const sourceWidth = video.videoWidth || 1280;
+  const sourceHeight = video.videoHeight || 720;
+  const scale = Math.min(1, 1920 / sourceWidth, 1080 / sourceHeight);
+  const width = Math.max(2, Math.floor((sourceWidth * scale) / 2) * 2);
+  const height = Math.max(2, Math.floor((sourceHeight * scale) / 2) * 2);
+  return { width, height };
 }
 
 function updateExportProgress(lap, currentTime) {
@@ -743,13 +774,26 @@ async function exportLapCopy(lap) {
   if (state.exportJob) return;
   const source = getSource(lap.sourceId);
   const captureMethod = HTMLMediaElement.prototype.captureStream || HTMLMediaElement.prototype.mozCaptureStream;
-  const mimeType = recordingMimeType();
-  if (!source || !captureMethod || !window.MediaRecorder || !mimeType) {
+  const canCaptureCanvas = typeof HTMLCanvasElement.prototype.captureStream === "function";
+  if (!source || !captureMethod || !canCaptureCanvas || !window.MediaRecorder || !supportedRecordingTypes().length) {
     window.alert("This browser cannot create a local video copy. Use the latest Chrome or Edge.");
     return;
   }
 
-  const job = { cancelled: false, video: null, stream: null, recorder: null, timer: null };
+  const job = {
+    cancelled: false,
+    video: els.exportPreview,
+    canvas: null,
+    sourceStream: null,
+    canvasStream: null,
+    stream: null,
+    recorder: null,
+    timer: null,
+    frameCallbackId: null,
+    animationFrameId: null,
+    visibilityHandler: null,
+    pausedForVisibility: false,
+  };
   state.exportJob = job;
   els.exportToast.hidden = false;
   els.exportTitle.textContent = `${source.name} - ${lap.name}`;
@@ -757,38 +801,105 @@ async function exportLapCopy(lap) {
   els.exportProgress.value = 0;
 
   try {
-    const video = document.createElement("video");
-    job.video = video;
+    const video = job.video;
     video.src = source.url;
     video.muted = true;
     video.playsInline = true;
     video.preload = "auto";
-    video.style.cssText = "position:fixed;width:320px;left:-10000px;bottom:0";
-    document.body.append(video);
+    video.load();
     if (video.readyState < 1) await waitForMedia(video, "loadedmetadata");
     await seekMedia(video, lap.start);
     if (job.cancelled) throw new DOMException("Cancelled", "AbortError");
 
-    const stream = captureMethod.call(video);
+    const { width, height } = exportDimensions(video);
+    const canvas = document.createElement("canvas");
+    job.canvas = canvas;
+    canvas.className = "export-canvas";
+    canvas.width = width;
+    canvas.height = height;
+    els.exportToast.append(canvas);
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) throw new Error("The browser could not prepare the video renderer.");
+    context.drawImage(video, 0, 0, width, height);
+
+    const sourceStream = captureMethod.call(video);
+    const canvasStream = canvas.captureStream(30);
+    job.sourceStream = sourceStream;
+    job.canvasStream = canvasStream;
+    const stream = new MediaStream([
+      ...canvasStream.getVideoTracks(),
+      ...sourceStream.getAudioTracks(),
+    ]);
     job.stream = stream;
+
+    const recorderSetup = createExportRecorder(stream);
+    if (!recorderSetup) throw new Error("No stable recording codec is available.");
+    const { recorder, mimeType } = recorderSetup;
     const chunks = [];
-    const recorder = new MediaRecorder(stream, {
-      mimeType,
-      videoBitsPerSecond: 12_000_000,
-      audioBitsPerSecond: 192_000,
-    });
     job.recorder = recorder;
     recorder.addEventListener("dataavailable", (event) => { if (event.data.size) chunks.push(event.data); });
     const stopped = new Promise((resolve, reject) => {
       recorder.addEventListener("stop", resolve, { once: true });
       recorder.addEventListener("error", () => reject(new Error("Video recording failed.")), { once: true });
     });
+
+    function scheduleDraw() {
+      if (typeof video.requestVideoFrameCallback === "function") {
+        job.frameCallbackId = video.requestVideoFrameCallback(drawFrame);
+      } else {
+        job.animationFrameId = requestAnimationFrame(drawFrame);
+      }
+    }
+
+    function drawFrame() {
+      job.frameCallbackId = null;
+      job.animationFrameId = null;
+      if (job.cancelled || video.paused || video.ended) return;
+      context.drawImage(video, 0, 0, width, height);
+      scheduleDraw();
+    }
+
+    job.visibilityHandler = () => {
+      if (document.hidden) {
+        job.pausedForVisibility = true;
+        video.pause();
+        if (job.frameCallbackId !== null && typeof video.cancelVideoFrameCallback === "function") {
+          video.cancelVideoFrameCallback(job.frameCallbackId);
+          job.frameCallbackId = null;
+        }
+        if (job.animationFrameId !== null) {
+          cancelAnimationFrame(job.animationFrameId);
+          job.animationFrameId = null;
+        }
+        if (recorder.state === "recording") recorder.pause();
+        els.exportStatus.textContent = "Paused - keep this tab visible";
+      } else if (job.pausedForVisibility && !job.cancelled) {
+        job.pausedForVisibility = false;
+        if (recorder.state === "paused") recorder.resume();
+        video.play().catch(() => {});
+        scheduleDraw();
+      }
+    };
+    document.addEventListener("visibilitychange", job.visibilityHandler);
+
     recorder.start(1000);
+    els.exportStatus.textContent = `Rendering ${width}x${height} at 30 fps...`;
     await video.play();
+    scheduleDraw();
     updateExportProgress(lap, video.currentTime);
     job.timer = setInterval(() => {
+      if (job.cancelled) {
+        video.pause();
+        clearInterval(job.timer);
+        if (recorder.state !== "inactive") recorder.stop();
+        return;
+      }
+      if (job.pausedForVisibility) {
+        els.exportStatus.textContent = "Paused - keep this tab visible";
+        return;
+      }
       updateExportProgress(lap, video.currentTime);
-      if (job.cancelled || video.currentTime >= lap.end) {
+      if (video.currentTime >= lap.end) {
         video.pause();
         clearInterval(job.timer);
         if (recorder.state !== "inactive") recorder.stop();
@@ -797,15 +908,16 @@ async function exportLapCopy(lap) {
     await stopped;
 
     if (!job.cancelled) {
+      if (!chunks.length) throw new Error("The browser produced an empty video file.");
       els.exportProgress.value = 100;
       els.exportStatus.textContent = "Copy ready";
       const extension = mimeType.startsWith("video/mp4") ? "mp4" : "webm";
-      const safeName = source.name.replace(/\.[^.]+$/, "").replace(/[^a-z0-9_-]+/gi, "_");
+      const safeName = safeFileName(lap.name || fileBaseName(source.name));
       const blob = new Blob(chunks, { type: mimeType });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${safeName}_Lap_${String(lap.number).padStart(2, "0")}.${extension}`;
+      link.download = `${safeName}.${extension}`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
       await new Promise((resolve) => setTimeout(resolve, 900));
@@ -814,11 +926,20 @@ async function exportLapCopy(lap) {
     if (error.name !== "AbortError") window.alert(`The lap copy could not be created: ${error.message}`);
   } finally {
     clearInterval(job.timer);
+    if (job.visibilityHandler) document.removeEventListener("visibilitychange", job.visibilityHandler);
+    if (job.frameCallbackId !== null && typeof job.video.cancelVideoFrameCallback === "function") {
+      job.video.cancelVideoFrameCallback(job.frameCallbackId);
+    }
+    if (job.animationFrameId !== null) cancelAnimationFrame(job.animationFrameId);
     if (job.recorder?.state && job.recorder.state !== "inactive") job.recorder.stop();
     if (job.video) {
       job.video.pause();
-      job.video.remove();
+      job.video.removeAttribute("src");
+      job.video.load();
     }
+    job.canvas?.remove();
+    job.sourceStream?.getTracks().forEach((track) => track.stop());
+    job.canvasStream?.getTracks().forEach((track) => track.stop());
     job.stream?.getTracks().forEach((track) => track.stop());
     state.exportJob = null;
     els.exportToast.hidden = true;

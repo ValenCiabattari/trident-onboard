@@ -185,6 +185,8 @@
 
     <div id="exportToast" class="export-toast" hidden>
       <div><strong id="exportTitle">Preparing lap copy</strong><span id="exportStatus">0%</span></div>
+      <video id="exportPreview" muted playsinline></video>
+      <p class="export-hint">Smooth export up to 30 fps. Keep this tab visible until the download starts.</p>
       <progress id="exportProgress" max="100" value="0"></progress>
       <button id="cancelExportBtn" class="text-button" type="button">Cancel</button>
     </div>
