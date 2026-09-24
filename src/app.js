@@ -1,11 +1,27 @@
+const STORAGE_KEY = "trident-onboard-workspace-v2";
+let storageAvailable = true;
+
+function loadStoredWorkspace() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
+  } catch {
+    storageAvailable = false;
+    return {};
+  }
+}
+
+const storedWorkspace = loadStoredWorkspace();
+
 const state = {
   sources: [],
+  readyLaps: [],
   cutterSourceId: null,
   cutterPreviewEnd: null,
   adjustments: {},
+  lapNames: storedWorkspace.lapNames || {},
+  reviews: storedWorkspace.reviews || {},
   slotA: null,
   slotB: null,
-  notes: [],
   relTime: 0,
   isPlaying: false,
   baseRelTime: 0,
@@ -29,7 +45,8 @@ const els = Object.fromEntries(
     "slotBMeta", "slotASelect", "slotBSelect", "offsetA", "offsetB", "markAStart",
     "markAEnd", "markBStart", "markBEnd", "addNoteBtn", "noteType", "noteText",
     "notesList", "exportBtn", "exportToast", "exportTitle", "exportStatus", "exportProgress",
-    "cancelExportBtn",
+    "cancelExportBtn", "comparisonVideoInput", "readyLapCount", "nameA", "nameB",
+    "reviewPairLabel", "notesSaveStatus", "saveCommentsBtn",
   ].map((id) => [id, document.querySelector(`#${id}`)]),
 );
 
@@ -67,6 +84,26 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function persistWorkspace() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      lapNames: state.lapNames,
+      reviews: state.reviews,
+    }));
+    storageAvailable = true;
+  } catch {
+    storageAvailable = false;
+  }
+}
+
+function fileFingerprint(file) {
+  return `${file.name}:${file.size}:${file.lastModified}`;
+}
+
+function fileBaseName(name) {
+  return name.replace(/\.[^.]+$/, "");
+}
+
 function getSource(id) {
   return state.sources.find((source) => source.id === id) || null;
 }
@@ -80,7 +117,7 @@ function sortedCrossings(source) {
 }
 
 function allLaps() {
-  return state.sources.flatMap((source) => {
+  const cutLaps = state.sources.flatMap((source) => {
     const crossings = sortedCrossings(source);
     return crossings.slice(0, -1).map((crossing, index) => {
       const nextCrossing = crossings[index + 1];
@@ -88,14 +125,18 @@ function allLaps() {
       const adjustment = state.adjustments[id] || {};
       const rawStart = crossing.time;
       const rawEnd = nextCrossing.time;
+      const storageKey = `cut:${source.fingerprint}:${rawStart.toFixed(3)}:${rawEnd.toFixed(3)}`;
       const start = clamp(adjustment.start ?? rawStart, rawStart, rawEnd);
       const end = clamp(adjustment.end ?? rawEnd, start, rawEnd);
       return {
         id,
+        storageKey,
         sourceId: source.id,
         sourceName: source.name,
         number: index + 1,
-        name: `Lap ${index + 1}`,
+        defaultName: `Lap ${index + 1}`,
+        name: state.lapNames[storageKey] || `Lap ${index + 1}`,
+        origin: "Cut from session",
         start,
         end,
         rawStart,
@@ -105,6 +146,26 @@ function allLaps() {
       };
     });
   });
+
+  const readyLaps = state.readyLaps.map((item, index) => {
+    const adjustment = state.adjustments[item.id] || {};
+    const start = clamp(adjustment.start ?? 0, 0, item.duration);
+    const end = clamp(adjustment.end ?? item.duration, start, item.duration);
+    return {
+      ...item,
+      number: index + 1,
+      defaultName: fileBaseName(item.sourceName),
+      name: state.lapNames[item.storageKey] || fileBaseName(item.sourceName),
+      origin: "Ready-made lap",
+      start,
+      end,
+      rawStart: 0,
+      rawEnd: item.duration,
+      duration: Math.max(0, end - start),
+    };
+  });
+
+  return [...cutLaps, ...readyLaps];
 }
 
 function getLap(id) {
@@ -126,6 +187,22 @@ function chooseDefaultSlots() {
 
 function lapForSlot(slot) {
   return getLap(slot === "A" ? state.slotA : state.slotB);
+}
+
+function currentReviewKey() {
+  const lapA = lapForSlot("A");
+  const lapB = lapForSlot("B");
+  if (!lapA || !lapB) return null;
+  return `${lapA.storageKey}::${lapB.storageKey}`;
+}
+
+function currentReview(create = true) {
+  const key = currentReviewKey();
+  if (!key) return null;
+  if (!state.reviews[key] && create) {
+    state.reviews[key] = { notes: [], updatedAt: new Date().toISOString() };
+  }
+  return state.reviews[key] || null;
 }
 
 function comparisonLength() {
@@ -161,7 +238,15 @@ function addFiles(files) {
   for (const file of videos) {
     const url = URL.createObjectURL(file);
     const probe = document.createElement("video");
-    const source = { id: uid(), name: file.name, file, url, duration: 0, crossings: [] };
+    const source = {
+      id: uid(),
+      name: file.name,
+      file,
+      fingerprint: fileFingerprint(file),
+      url,
+      duration: 0,
+      crossings: [],
+    };
     state.sources.push(source);
     if (!state.cutterSourceId) state.cutterSourceId = source.id;
 
@@ -175,6 +260,48 @@ function addFiles(files) {
   }
   renderCutter();
   loadCutterSource();
+}
+
+function addReadyLapFiles(files) {
+  const videos = Array.from(files).filter((file) => file.type.startsWith("video/"));
+  const addedIds = [];
+
+  for (const file of videos) {
+    const url = URL.createObjectURL(file);
+    const probe = document.createElement("video");
+    const readyLap = {
+      id: `ready:${uid()}`,
+      storageKey: `ready:${fileFingerprint(file)}`,
+      sourceId: null,
+      sourceName: file.name,
+      file,
+      url,
+      duration: 0,
+    };
+    state.readyLaps.push(readyLap);
+    addedIds.push(readyLap.id);
+
+    probe.preload = "metadata";
+    probe.src = url;
+    probe.addEventListener("loadedmetadata", () => {
+      readyLap.duration = Number.isFinite(probe.duration) ? probe.duration : 0;
+      renderCutter();
+      renderComparison();
+    }, { once: true });
+  }
+
+  if (addedIds.length >= 2) {
+    state.slotA = addedIds[0];
+    state.slotB = addedIds[1];
+  } else if (addedIds[0]) {
+    if (!state.slotA) state.slotA = addedIds[0];
+    else state.slotB = addedIds[0];
+  }
+
+  state.relTime = 0;
+  renderCutter();
+  renderComparison();
+  if (addedIds.length) setView("compare");
 }
 
 function renderCutter() {
@@ -378,6 +505,7 @@ function setVideoForSlot(slot) {
   const title = slot === "A" ? els.slotATitle : els.slotBTitle;
   const meta = slot === "A" ? els.slotAMeta : els.slotBMeta;
   const offsetInput = slot === "A" ? els.offsetA : els.offsetB;
+  const nameInput = slot === "A" ? els.nameA : els.nameB;
   if (!lap) {
     video.removeAttribute("src");
     video.removeAttribute("data-lap-id");
@@ -385,6 +513,8 @@ function setVideoForSlot(slot) {
     title.textContent = `Slot ${slot}`;
     meta.textContent = "Choose a created lap";
     offsetInput.value = "0";
+    nameInput.value = "";
+    nameInput.disabled = true;
     return;
   }
   if (video.dataset.lapId !== lap.id) {
@@ -393,9 +523,11 @@ function setVideoForSlot(slot) {
   }
   video.muted = true;
   video.playbackRate = state.speed;
-  title.textContent = `${lap.sourceName} - ${lap.name}`;
-  meta.textContent = formatTime(lap.duration);
+  title.textContent = lap.name;
+  meta.textContent = `${lap.origin} - ${formatTime(lap.duration)}`;
   offsetInput.value = String(state.adjustments[lap.id]?.[`offset${slot}`] || 0);
+  nameInput.value = lap.name;
+  nameInput.disabled = false;
 }
 
 function updateVideos(hardSync = false) {
@@ -421,13 +553,36 @@ function updateTimeline() {
 }
 
 function renderNotes() {
-  if (!state.notes.length) {
+  const lapA = lapForSlot("A");
+  const lapB = lapForSlot("B");
+  const review = currentReview(false);
+  const hasPair = Boolean(lapA && lapB);
+  const notes = review?.notes || [];
+
+  els.addNoteBtn.disabled = !hasPair;
+  els.saveCommentsBtn.disabled = !hasPair;
+  els.noteText.disabled = !hasPair;
+  els.noteType.disabled = !hasPair;
+  els.reviewPairLabel.textContent = hasPair
+    ? `${lapA.name} vs ${lapB.name}`
+    : "Choose two laps to start a review.";
+  els.notesSaveStatus.textContent = hasPair
+    ? (storageAvailable ? "Auto-saved on this computer" : "Use Save comments to keep this review")
+    : "Waiting for two laps";
+
+  if (!hasPair) {
+    els.notesList.className = "notes-list empty-state";
+    els.notesList.innerHTML = "<p>Select a reference lap and a comparison lap.</p>";
+    return;
+  }
+
+  if (!notes.length) {
     els.notesList.className = "notes-list empty-state";
     els.notesList.innerHTML = "<p>Use notes to capture differences while scrubbing through the lap.</p>";
     return;
   }
   els.notesList.className = "notes-list";
-  els.notesList.innerHTML = state.notes.map((note) => `
+  els.notesList.innerHTML = notes.map((note) => `
     <article class="note-item">
       <span class="note-time">${formatTime(note.time)}</span>
       <span class="note-tag">${escapeHtml(note.type)}</span>
@@ -439,12 +594,80 @@ function renderNotes() {
 
 function renderComparison() {
   chooseDefaultSlots();
+  els.readyLapCount.textContent = `${state.readyLaps.length} direct ${state.readyLaps.length === 1 ? "upload" : "uploads"}`;
   renderSlotSelectors();
   setVideoForSlot("A");
   setVideoForSlot("B");
   updateTimeline();
   renderNotes();
   updateVideos(true);
+}
+
+function renameSlotLap(slot, value) {
+  const lap = lapForSlot(slot);
+  if (!lap) return;
+  const cleanName = value.trim() || lap.defaultName;
+  state.lapNames[lap.storageKey] = cleanName;
+  persistWorkspace();
+  renderCutter();
+  renderComparison();
+}
+
+function previewSlotLapName(slot, value) {
+  const lap = lapForSlot(slot);
+  if (!lap) return;
+  const cleanName = value.trim();
+  if (cleanName) state.lapNames[lap.storageKey] = cleanName;
+  else delete state.lapNames[lap.storageKey];
+  persistWorkspace();
+  const title = slot === "A" ? els.slotATitle : els.slotBTitle;
+  title.textContent = cleanName || lap.defaultName;
+  renderNotes();
+}
+
+function safeFileName(value) {
+  return value.replace(/[^a-z0-9_-]+/gi, "_").replace(/^_+|_+$/g, "") || "review";
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function saveCommentsReport() {
+  const lapA = lapForSlot("A");
+  const lapB = lapForSlot("B");
+  const review = currentReview(false);
+  if (!lapA || !lapB) return;
+
+  const notes = [...(review?.notes || [])].sort((a, b) => a.time - b.time);
+  const lines = [
+    "TRIDENT ONBOARD REVIEW",
+    "",
+    `Reference: ${lapA.name}`,
+    `Source: ${lapA.sourceName}`,
+    `Duration: ${formatTime(lapA.duration)}`,
+    "",
+    `Comparison: ${lapB.name}`,
+    `Source: ${lapB.sourceName}`,
+    `Duration: ${formatTime(lapB.duration)}`,
+    "",
+    `Saved: ${new Date().toLocaleString()}`,
+    "",
+    "COMMENTS",
+    notes.length ? "" : "No comments were added.",
+    ...notes.flatMap((note) => [
+      `${formatTime(note.time)}  [${note.type}]`,
+      note.text,
+      "",
+    ]),
+  ];
+  const filename = `${safeFileName(lapA.name)}_vs_${safeFileName(lapB.name)}_comments.txt`;
+  downloadBlob(new Blob([lines.join("\r\n")], { type: "text/plain;charset=utf-8" }), filename);
 }
 
 function setPlaying(nextPlaying) {
@@ -604,6 +827,7 @@ async function exportLapCopy(lap) {
 
 document.querySelectorAll(".mode-tab").forEach((tab) => tab.addEventListener("click", () => setView(tab.dataset.view)));
 els.videoInput.addEventListener("change", (event) => addFiles(event.target.files));
+els.comparisonVideoInput.addEventListener("change", (event) => addReadyLapFiles(event.target.files));
 
 ["dragenter", "dragover"].forEach((eventName) => els.dropZone.addEventListener(eventName, (event) => {
   event.preventDefault();
@@ -684,6 +908,10 @@ els.lapList.addEventListener("click", (event) => {
 
 els.slotASelect.addEventListener("change", (event) => { state.slotA = event.target.value || null; state.relTime = 0; renderComparison(); });
 els.slotBSelect.addEventListener("change", (event) => { state.slotB = event.target.value || null; state.relTime = 0; renderComparison(); });
+els.nameA.addEventListener("change", (event) => renameSlotLap("A", event.target.value));
+els.nameB.addEventListener("change", (event) => renameSlotLap("B", event.target.value));
+els.nameA.addEventListener("input", (event) => previewSlotLapName("A", event.target.value));
+els.nameB.addEventListener("input", (event) => previewSlotLapName("B", event.target.value));
 els.playBtn.addEventListener("click", () => setPlaying(!state.isPlaying));
 els.restartBtn.addEventListener("click", () => seekComparison(0));
 els.stepBackBtn.addEventListener("click", () => seekComparison(state.relTime - 1 / 30));
@@ -713,23 +941,34 @@ els.markBEnd.addEventListener("click", () => setComparisonMarker("B", "end"));
 
 els.addNoteBtn.addEventListener("click", () => {
   const text = els.noteText.value.trim();
-  if (!text) return;
-  state.notes.push({ id: uid(), time: state.relTime, type: els.noteType.value, text });
+  const review = currentReview();
+  if (!text || !review) return;
+  review.notes.push({ id: uid(), time: state.relTime, type: els.noteType.value, text });
+  review.updatedAt = new Date().toISOString();
+  persistWorkspace();
   els.noteText.value = "";
   renderNotes();
 });
 els.notesList.addEventListener("click", (event) => {
   const button = event.target.closest("[data-delete-note]");
   if (!button) return;
-  state.notes = state.notes.filter((note) => note.id !== button.dataset.deleteNote);
+  const review = currentReview(false);
+  if (!review) return;
+  review.notes = review.notes.filter((note) => note.id !== button.dataset.deleteNote);
+  review.updatedAt = new Date().toISOString();
+  persistWorkspace();
   renderNotes();
 });
+els.saveCommentsBtn.addEventListener("click", saveCommentsReport);
 
 els.cancelExportBtn.addEventListener("click", () => {
   if (state.exportJob) state.exportJob.cancelled = true;
 });
 
 els.exportBtn.addEventListener("click", () => {
+  const lapA = lapForSlot("A");
+  const lapB = lapForSlot("B");
+  const review = currentReview(false);
   const payload = {
     exportedAt: new Date().toISOString(),
     sessions: state.sources.map((source) => ({
@@ -738,17 +977,18 @@ els.exportBtn.addEventListener("click", () => {
       duration: source.duration,
       crossings: sortedCrossings(source).map((crossing) => crossing.time),
     })),
-    laps: allLaps().map(({ id, sourceId, sourceName, number, start, end, duration }) => ({ id, sourceId, sourceName, number, start, end, duration })),
-    comparison: { slotA: state.slotA, slotB: state.slotB },
-    notes: state.notes,
+    directUploads: state.readyLaps.map(({ id, sourceName, duration }) => ({ id, sourceName, duration })),
+    laps: allLaps().map(({ id, sourceId, sourceName, name, origin, number, start, end, duration }) => ({ id, sourceId, sourceName, name, origin, number, start, end, duration })),
+    comparison: lapA && lapB ? {
+      reference: { name: lapA.name, sourceName: lapA.sourceName, duration: lapA.duration },
+      comparison: { name: lapB.name, sourceName: lapB.sourceName, duration: lapB.duration },
+      notes: review?.notes || [],
+    } : null,
   };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "trident-onboard-review.json";
-  link.click();
-  URL.revokeObjectURL(url);
+  const filename = lapA && lapB
+    ? `${safeFileName(lapA.name)}_vs_${safeFileName(lapB.name)}_review.json`
+    : "trident-onboard-review.json";
+  downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }), filename);
 });
 
 renderCutter();

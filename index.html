@@ -101,6 +101,19 @@
 
         <section id="compareView" class="view-panel" aria-label="Lap comparison" hidden>
           <section class="comparison-panel">
+            <div class="compare-intake">
+              <div>
+                <p class="eyebrow">Direct comparison</p>
+                <h2>Already have complete lap videos?</h2>
+                <p>Load one or two finished laps here. They will stay available alongside laps created in the cutter.</p>
+              </div>
+              <div class="compare-intake-actions">
+                <label class="button primary" for="comparisonVideoInput">Load ready-made laps</label>
+                <input id="comparisonVideoInput" type="file" accept="video/*" multiple />
+                <span id="readyLapCount" class="stage-meta">0 direct uploads</span>
+              </div>
+            </div>
+
             <div class="control-strip">
               <div class="playback-controls">
                 <button id="restartBtn" class="icon-button" type="button" title="Restart lap">0:00</button>
@@ -125,8 +138,9 @@
                 <div class="stage-header"><div><p class="eyebrow">Reference lap</p><h2 id="slotATitle">Slot A</h2></div><span id="slotAMeta" class="stage-meta">Choose a created lap</span></div>
                 <video id="videoA" muted playsinline></video>
                 <div class="slot-controls">
-                  <label>Lap <select id="slotASelect"></select></label>
-                  <label>Sync offset <input id="offsetA" type="number" step="0.01" value="0" /></label>
+                  <label class="lap-select-field">Lap <select id="slotASelect"></select></label>
+                  <label class="lap-name-field">Name <input id="nameA" type="text" placeholder="Reference lap name" /></label>
+                  <label class="offset-field">Sync offset <input id="offsetA" type="number" step="0.01" value="0" /></label>
                   <button id="markAStart" class="button secondary" type="button">Set start</button>
                   <button id="markAEnd" class="button secondary" type="button">Set end</button>
                 </div>
@@ -136,8 +150,9 @@
                 <div class="stage-header"><div><p class="eyebrow">Comparison lap</p><h2 id="slotBTitle">Slot B</h2></div><span id="slotBMeta" class="stage-meta">Choose a created lap</span></div>
                 <video id="videoB" muted playsinline></video>
                 <div class="slot-controls">
-                  <label>Lap <select id="slotBSelect"></select></label>
-                  <label>Sync offset <input id="offsetB" type="number" step="0.01" value="0" /></label>
+                  <label class="lap-select-field">Lap <select id="slotBSelect"></select></label>
+                  <label class="lap-name-field">Name <input id="nameB" type="text" placeholder="Comparison lap name" /></label>
+                  <label class="offset-field">Sync offset <input id="offsetB" type="number" step="0.01" value="0" /></label>
                   <button id="markBStart" class="button secondary" type="button">Set start</button>
                   <button id="markBEnd" class="button secondary" type="button">Set end</button>
                 </div>
@@ -145,7 +160,18 @@
             </div>
 
             <section class="insight-panel" aria-label="Comparison notes">
-              <div class="panel-heading"><div><p class="eyebrow">Review</p><h2>Driving notes</h2></div><button id="addNoteBtn" class="button secondary" type="button">Add note at time</button></div>
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Review</p>
+                  <h2>Driving notes</h2>
+                  <p id="reviewPairLabel" class="review-pair">Choose two laps to start a review.</p>
+                </div>
+                <div class="note-actions">
+                  <span id="notesSaveStatus" class="save-status">Waiting for two laps</span>
+                  <button id="saveCommentsBtn" class="button secondary" type="button">Save comments</button>
+                  <button id="addNoteBtn" class="button primary" type="button">Add note at time</button>
+                </div>
+              </div>
               <div class="note-inputs">
                 <select id="noteType"><option>Braking</option><option>Turn-in</option><option>Apex</option><option>Throttle</option><option>Line</option><option>Other</option></select>
                 <input id="noteText" type="text" placeholder="Example: Driver B releases brake earlier into T4" />

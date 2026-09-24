@@ -5,12 +5,16 @@ Local demo app for cutting complete onboard sessions into laps and comparing the
 ## What it does
 
 - Load one or more complete onboard sessions.
+- Load one or two already-cut lap videos directly in the comparison view.
 - Mark consecutive finish-line crossings; every pair automatically becomes a lap.
 - Find the exact crossing with nearby frame thumbnails, timeline scrubbing, and frame stepping.
 - Send any created lap directly to comparison Slot A or Slot B.
+- Give every reference and comparison lap a custom name.
 - Play, pause, scrub, loop, step frame by frame, and adjust playback speed.
 - Apply per-video sync offsets.
 - Add driving notes at the current lap time.
+- Keep notes separated by lap pairing and auto-save them in the browser.
+- Download a readable comments report named after both compared laps.
 - Save an individual lap as a local video copy.
 - Export a JSON notes file for review.
 
@@ -33,3 +37,5 @@ Saving a lap copy records the selected interval locally as WebM (or MP4 when the
 5. Choose **Use A** or **Use B** on any lap, then open the comparison view.
 6. Choose **Save copy** to download an individual lap.
 7. Add driving notes and export the review when finished.
+
+Alternatively, open **Compare** and choose **Load ready-made laps** to select two complete lap videos without using the cutter. The first file becomes the reference and the second becomes the comparison. Lap names and comments are remembered on this computer when the same files are loaded again.
