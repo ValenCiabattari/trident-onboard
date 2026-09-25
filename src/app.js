@@ -1,4 +1,7 @@
 const STORAGE_KEY = "trident-onboard-workspace-v2";
+const ASSET_DB_NAME = "trident-briefing-assets-v1";
+const ASSET_STORE_NAME = "assets";
+const CUSTOM_MAP_ASSET_KEY = "custom-circuit-map";
 let storageAvailable = true;
 
 function loadStoredWorkspace() {
@@ -8,6 +11,53 @@ function loadStoredWorkspace() {
     storageAvailable = false;
     return {};
   }
+}
+
+function openAssetDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(ASSET_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(ASSET_STORE_NAME)) {
+        request.result.createObjectStore(ASSET_STORE_NAME);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveBriefingAsset(key, blob) {
+  const database = await openAssetDatabase();
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction(ASSET_STORE_NAME, "readwrite");
+    transaction.objectStore(ASSET_STORE_NAME).put(blob, key);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+  database.close();
+}
+
+async function loadBriefingAsset(key) {
+  const database = await openAssetDatabase();
+  const result = await new Promise((resolve, reject) => {
+    const transaction = database.transaction(ASSET_STORE_NAME, "readonly");
+    const request = transaction.objectStore(ASSET_STORE_NAME).get(key);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+  });
+  database.close();
+  return result;
+}
+
+async function deleteBriefingAsset(key) {
+  const database = await openAssetDatabase();
+  await new Promise((resolve, reject) => {
+    const transaction = database.transaction(ASSET_STORE_NAME, "readwrite");
+    transaction.objectStore(ASSET_STORE_NAME).delete(key);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+  database.close();
 }
 
 const storedWorkspace = loadStoredWorkspace();
@@ -33,6 +83,23 @@ const state = {
   precisionToken: 0,
   precisionTimer: null,
   exportJob: null,
+  briefingMode: storedWorkspace.briefing?.mode || "demo",
+  customView: storedWorkspace.briefing?.customView || "editor",
+  selectedCornerId: storedWorkspace.briefing?.selectedCornerId || "t1",
+  customSelectedCornerId: storedWorkspace.briefing?.customSelectedCornerId || "custom-t1",
+  learnedCorners: new Set(storedWorkspace.briefing?.learnedCorners || []),
+  customLearnedCorners: new Set(storedWorkspace.briefing?.customLearnedCorners || []),
+  cornerPhotos: {},
+  customBriefing: null,
+  customMapUrl: null,
+  mapPlacementMode: false,
+  hotspotDrag: null,
+  hotspotDragMoved: false,
+  testRun: null,
+  testTimerId: null,
+  testStatus: storedWorkspace.briefing?.testStatus || { demo: "idle", custom: "idle" },
+  testPassed: storedWorkspace.briefing?.testPassed || { demo: false, custom: false },
+  bestTestTimes: storedWorkspace.briefing?.bestTestTimes || {},
 };
 
 const els = Object.fromEntries(
@@ -50,10 +117,223 @@ const els = Object.fromEntries(
     "cancelExportBtn", "exportPreview", "exportAudioStatus", "comparisonVideoInput", "readyLapCount", "nameA", "nameB",
     "reviewPairLabel", "notesSaveStatus", "saveCommentsBtn",
     "cutterSoundToggle", "audioSourceSelect",
+    "briefingView", "briefingProgress", "briefingReadyScore", "activeCornerBadge", "briefingTitle", "briefingContextLabel",
+    "briefingDescription", "briefingModeTabs", "briefingPassBadge", "briefingRetryBadge", "briefingBestTime",
+    "launchTestBtn", "launchTestSideBtn", "previewBriefingBtn", "editBriefingBtn", "trackPlanTitle", "customMapControls", "trackMapInput",
+    "addHotspotBtn", "clearHotspotsBtn", "trackBoard", "defaultTrackMap", "uploadedTrackMap", "mapPlacementHint",
+    "trackHotspots", "cornerList", "cornerTitle", "cornerMeta", "cornerPriority",
+    "markLearnedBtn", "cornerBrake", "cornerSpeed", "cornerGear", "cornerCue",
+    "cornerTyre", "cornerCoach", "cornerPhotoInput", "cornerPhotoLabel", "cornerPhotoUploadLabel",
+    "cornerPhotoPreview", "checklistList", "cornerReadView", "cornerEditForm", "deleteCornerBtn",
+    "warmupTitle", "tyreSteps", "addWarmupStepBtn", "briefingSetupPanel", "customPlanTitle", "customWarmupTitle",
+    "addChecklistItemBtn", "questionBankPanel", "questionBankList", "addQuestionBtn",
+    "resetCustomBriefingBtn", "testLaunchPanel", "testStatusBadge", "testLaunchCopy", "testOverlay", "testOverlayTitle",
+    "testProgress", "testTimer", "exitTestBtn", "testQuestionCard", "testCornerLabel",
+    "testQuestionText", "testAnswerOptions", "testSuccessCard", "testFinalTime", "finishTestBtn",
+    "testFailureCard", "testFailureTime", "finishFailedTestBtn",
   ].map((id) => [id, document.querySelector(`#${id}`)]),
 );
 
 const videoBySlot = { A: els.videoA, B: els.videoB };
+
+const briefingCorners = [
+  {
+    id: "t1",
+    label: "T1",
+    name: "T1 braking",
+    priority: "High priority",
+    sector: "Sector 1",
+    brake: "100 m board, release before kerb",
+    speed: "118 km/h",
+    gear: "4th",
+    cue: "Brake straight, finish rotation before T2.",
+    tyre: "Avoid a front-left slide; it hurts the car immediately into T3.",
+    coach: "Do not follow another car past the braking board. The reference is the board, not the slipstream.",
+    x: 30,
+    y: 24,
+    question: "What is the key reference for T1 braking?",
+    options: ["100 m board", "Start of outside kerb", "Pit exit line"],
+    answer: "100 m board",
+  },
+  {
+    id: "t3",
+    label: "T3",
+    name: "T3 long right",
+    priority: "Tyre management",
+    sector: "Sector 1",
+    brake: "Lift trace only",
+    speed: "202 km/h",
+    gear: "6th",
+    cue: "One steering input, let the car breathe mid-corner.",
+    tyre: "This corner defines front-left temperature for the lap. No extra steering after apex.",
+    coach: "If the car washes wide, wait half a beat before throttle instead of adding steering lock.",
+    x: 60,
+    y: 18,
+    question: "What is the main tyre risk through T3?",
+    options: ["Overheating the front-left", "Cooling the rear tyres", "Missing brake temperature"],
+    answer: "Overheating the front-left",
+  },
+  {
+    id: "t5",
+    label: "T5",
+    name: "T5 downhill brake",
+    priority: "Confidence corner",
+    sector: "Sector 2",
+    brake: "Bridge shadow, then trail",
+    speed: "92 km/h",
+    gear: "3rd",
+    cue: "Brake with the car straight, accept late rotation.",
+    tyre: "Rear can feel light downhill. Keep the first release calm.",
+    coach: "The mistake is rushing the apex. Slow hands make the exit cleaner.",
+    x: 87,
+    y: 61,
+    question: "What should the driver avoid in T5?",
+    options: ["Rushing the apex", "Using the bridge shadow", "Braking in a straight line"],
+    answer: "Rushing the apex",
+  },
+  {
+    id: "t10",
+    label: "T10",
+    name: "T10 heavy brake",
+    priority: "Overtake / defence",
+    sector: "Sector 3",
+    brake: "Orange board before service road",
+    speed: "78 km/h",
+    gear: "2nd",
+    cue: "Brake hard first, rotate late, protect traction.",
+    tyre: "Rear traction matters more than entry speed. Do not light the rears on exit.",
+    coach: "When defending, keep the same brake pressure and sacrifice only the release shape.",
+    x: 49,
+    y: 70,
+    question: "In T10, what matters more than entry speed?",
+    options: ["Rear traction on exit", "Maximum steering angle", "Shortest brake distance"],
+    answer: "Rear traction on exit",
+  },
+  {
+    id: "t14",
+    label: "T14",
+    name: "T14 quali launch",
+    priority: "Lap time exit",
+    sector: "Sector 3",
+    brake: "Kerb start on the left",
+    speed: "96 km/h",
+    gear: "3rd",
+    cue: "Square the exit; the lap starts before the line.",
+    tyre: "Save one rear traction event for the final exit on the push lap.",
+    coach: "Open the wheel before full throttle. A tiny wait beats a wide exit.",
+    x: 18,
+    y: 74,
+    question: "Why is T14 important in qualifying?",
+    options: ["It launches the main straight", "It cools the front tyres", "It sets the pit-lane delta"],
+    answer: "It launches the main straight",
+  },
+];
+
+const briefingChecklist = [
+  "First push lap only when the front axle responds at turn-in.",
+  "Do not copy the car ahead into T1 braking.",
+  "Protect front-left through T3 with one clean steering input.",
+  "T10 exit traction beats a heroic entry.",
+  "Final corner exit starts the next lap.",
+];
+
+const demoWarmupSteps = [
+  "Build brakes|Two firm stops before sector 2, no panic lock.",
+  "Front axle|Progressive steering load through long corners.",
+  "Push window|First push lap only when fronts answer at turn-in.",
+];
+
+function questionFromCorner(corner) {
+  return {
+    id: `question-${corner.id}`,
+    topic: corner.label,
+    question: corner.question,
+    options: [...corner.options],
+    answerIndex: Number.isInteger(corner.answerIndex)
+      ? corner.answerIndex
+      : Math.max(0, corner.options.indexOf(corner.answer)),
+  };
+}
+
+function createEditableBriefing() {
+  return {
+    title: "My editable circuit plan",
+    warmupTitle: "Out-lap rhythm",
+    warmupSteps: [...demoWarmupSteps],
+    checklist: [...briefingChecklist],
+    questions: briefingCorners.map(questionFromCorner),
+    corners: briefingCorners.map((corner) => ({
+      ...corner,
+      id: `custom-${corner.id}`,
+      photoIds: [],
+      options: [...corner.options],
+      answerIndex: Math.max(0, corner.options.indexOf(corner.answer)),
+    })),
+  };
+}
+
+function normalizeEditableBriefing(value) {
+  const fallback = createEditableBriefing();
+  if (!value || typeof value !== "object") return fallback;
+  const sourceQuestions = Array.isArray(value.questions)
+    ? value.questions
+    : (Array.isArray(value.corners) ? value.corners.map(questionFromCorner) : fallback.questions);
+  return {
+    title: String(value.title || fallback.title),
+    warmupTitle: String(value.warmupTitle || fallback.warmupTitle),
+    warmupSteps: Array.isArray(value.warmupSteps)
+      ? value.warmupSteps.map(String)
+      : fallback.warmupSteps,
+    checklist: Array.isArray(value.checklist) ? value.checklist.map(String).filter(Boolean) : fallback.checklist,
+    questions: sourceQuestions.map((question, index) => ({
+      id: String(question.id || `question-${uid()}`),
+      topic: String(question.topic || `Question ${index + 1}`),
+      question: String(question.question || "What should the driver remember?"),
+      options: Array.from({ length: 3 }, (_, optionIndex) => String(question.options?.[optionIndex] || `Answer ${optionIndex + 1}`)),
+      answerIndex: clamp(parseNumber(question.answerIndex, 0), 0, 2),
+    })),
+    corners: Array.isArray(value.corners)
+      ? value.corners.map((corner, index) => ({
+          id: String(corner.id || `custom-${uid()}`),
+          label: String(corner.label || `P${index + 1}`),
+          name: String(corner.name || `Point ${index + 1}`),
+          priority: String(corner.priority || "Key point"),
+          sector: String(corner.sector || "Circuit"),
+          brake: String(corner.brake || "Add reference"),
+          speed: String(corner.speed || "Add speed"),
+          gear: String(corner.gear || "Add gear"),
+          cue: String(corner.cue || "Add a short memory cue."),
+          tyre: String(corner.tyre || "Add tyre or energy guidance."),
+          coach: String(corner.coach || "Add the coach note."),
+          photoIds: Array.isArray(corner.photoIds) ? corner.photoIds.map(String) : [],
+          x: clamp(parseNumber(corner.x, 50), 3, 97),
+          y: clamp(parseNumber(corner.y, 50), 5, 95),
+        }))
+      : fallback.corners,
+  };
+}
+
+state.customBriefing = normalizeEditableBriefing(storedWorkspace.briefing?.customBriefing);
+if (!state.customBriefing.corners.some((corner) => corner.id === state.customSelectedCornerId)) {
+  state.customSelectedCornerId = state.customBriefing.corners[0]?.id || null;
+}
+
+async function restoreBriefingAssets() {
+  try {
+    const mapBlob = await loadBriefingAsset(CUSTOM_MAP_ASSET_KEY);
+    if (mapBlob) state.customMapUrl = URL.createObjectURL(mapBlob);
+    await Promise.all(state.customBriefing.corners.map(async (corner) => {
+      const restored = await Promise.all((corner.photoIds || []).map(async (id) => {
+        const blob = await loadBriefingAsset(id);
+        return blob ? { id, url: URL.createObjectURL(blob) } : null;
+      }));
+      state.cornerPhotos[corner.id] = restored.filter(Boolean);
+    }));
+    renderBriefing();
+  } catch {
+    // The briefing remains usable when persistent browser storage is unavailable.
+  }
+}
 
 function uid() {
   return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
@@ -108,6 +388,18 @@ function persistWorkspace() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       lapNames: state.lapNames,
       reviews: state.reviews,
+      briefing: {
+        mode: state.briefingMode,
+        customView: state.customView,
+        selectedCornerId: state.selectedCornerId,
+        customSelectedCornerId: state.customSelectedCornerId,
+        learnedCorners: [...state.learnedCorners],
+        customLearnedCorners: [...state.customLearnedCorners],
+        customBriefing: state.customBriefing,
+        testStatus: state.testStatus,
+        testPassed: state.testPassed,
+        bestTestTimes: state.bestTestTimes,
+      },
     }));
     storageAvailable = true;
   } catch {
@@ -238,17 +530,23 @@ function sourceTimeForSlot(slot, relTime = state.relTime) {
 
 function setView(view) {
   const cutter = view === "cutter";
+  const compare = view === "compare";
   els.cutterView.hidden = !cutter;
-  els.compareView.hidden = cutter;
+  els.compareView.hidden = !compare;
+  els.briefingView.hidden = view !== "briefing";
   document.querySelectorAll(".mode-tab").forEach((tab) => {
     tab.classList.toggle("is-active", tab.dataset.view === view);
   });
   if (cutter) {
     setPlaying(false);
-  } else {
+  } else if (compare) {
     els.cutterVideo.pause();
     els.cutterPlay.textContent = "Play";
     renderComparison();
+  } else {
+    els.cutterVideo.pause();
+    setPlaying(false);
+    renderBriefing();
   }
 }
 
@@ -641,6 +939,689 @@ function renderComparison() {
   updateVideos(true);
 }
 
+function activeBriefingCorners() {
+  return state.briefingMode === "custom" ? state.customBriefing.corners : briefingCorners;
+}
+
+function activeChecklist() {
+  return state.briefingMode === "custom" ? state.customBriefing.checklist : briefingChecklist;
+}
+
+function activeWarmupSteps() {
+  return state.briefingMode === "custom" ? state.customBriefing.warmupSteps : demoWarmupSteps;
+}
+
+function activeLearnedCorners() {
+  return state.briefingMode === "custom" ? state.customLearnedCorners : state.learnedCorners;
+}
+
+function activeSelectedCornerId() {
+  return state.briefingMode === "custom" ? state.customSelectedCornerId : state.selectedCornerId;
+}
+
+function setActiveSelectedCornerId(id) {
+  if (state.briefingMode === "custom") state.customSelectedCornerId = id;
+  else state.selectedCornerId = id;
+}
+
+function selectedCorner() {
+  const corners = activeBriefingCorners();
+  return corners.find((corner) => corner.id === activeSelectedCornerId()) || corners[0] || null;
+}
+
+function briefingProgressPercent() {
+  const corners = activeBriefingCorners();
+  if (!corners.length) return 0;
+  const validIds = new Set(corners.map((corner) => corner.id));
+  const learned = [...activeLearnedCorners()].filter((id) => validIds.has(id)).length;
+  return Math.round((learned / corners.length) * 100);
+}
+
+function formatTestTime(milliseconds) {
+  const totalTenths = Math.max(0, Math.floor(milliseconds / 100));
+  const minutes = Math.floor(totalTenths / 600);
+  const seconds = Math.floor((totalTenths % 600) / 10);
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${totalTenths % 10}`;
+}
+
+function renderBriefingProgress() {
+  const corners = activeBriefingCorners();
+  const validIds = new Set(corners.map((corner) => corner.id));
+  const learned = [...activeLearnedCorners()].filter((id) => validIds.has(id)).length;
+  const mode = state.briefingMode;
+  const passed = Boolean(state.testPassed[mode]);
+  els.briefingProgress.textContent = `${briefingProgressPercent()}%`;
+  els.briefingReadyScore.textContent = `${learned}/${corners.length}`;
+  els.briefingPassBadge.hidden = !passed;
+  els.briefingRetryBadge.hidden = passed || state.testStatus[mode] !== "failed";
+  els.briefingBestTime.textContent = state.bestTestTimes[mode]
+    ? `Best ${formatTestTime(state.bestTestTimes[mode])}`
+    : "Perfect test";
+}
+
+function isCustomEditor() {
+  return state.briefingMode === "custom" && state.customView === "editor";
+}
+
+function activeBriefingScreen() {
+  if (state.briefingMode === "demo") return "demo";
+  return state.customView === "editor" ? "editor" : "pilot";
+}
+
+function renderBriefingMode() {
+  const custom = state.briefingMode === "custom";
+  const editor = isCustomEditor();
+  const pilot = custom && !editor;
+  els.briefingContextLabel.textContent = editor ? "Team workspace" : (pilot ? "Driver briefing" : "Reference example");
+  els.briefingTitle.textContent = editor ? "Build the team briefing" : (pilot ? state.customBriefing.title : "Barcelona example briefing");
+  els.briefingDescription.textContent = editor
+    ? "Configure the circuit map, reference points, preparation notes and question bank."
+    : (pilot ? "Study the published briefing and complete the mini-test with 100%."
+    : "A completed reference briefing using Barcelona sample data.");
+  els.trackPlanTitle.textContent = custom ? state.customBriefing.title : "Barcelona sample plan";
+  els.briefingModeTabs.hidden = false;
+  els.customMapControls.hidden = !editor;
+  els.briefingSetupPanel.hidden = !editor;
+  els.questionBankPanel.hidden = !editor;
+  els.testLaunchPanel.hidden = editor;
+  els.previewBriefingBtn.hidden = !editor;
+  els.editBriefingBtn.hidden = !pilot;
+  els.launchTestBtn.hidden = editor;
+  els.cornerPhotoUploadLabel.hidden = pilot;
+  els.addWarmupStepBtn.hidden = !editor;
+  els.addChecklistItemBtn.hidden = !editor;
+  els.warmupTitle.hidden = editor;
+  els.customWarmupTitle.hidden = !editor;
+  els.defaultTrackMap.toggleAttribute("hidden", custom && Boolean(state.customMapUrl));
+  els.uploadedTrackMap.hidden = !custom || !state.customMapUrl;
+  if (state.customMapUrl) els.uploadedTrackMap.src = state.customMapUrl;
+  const activeScreen = activeBriefingScreen();
+  document.querySelectorAll("[data-briefing-screen]").forEach((button) => {
+    const active = button.dataset.briefingScreen === activeScreen;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+}
+
+function renderTrackHotspots() {
+  const learned = activeLearnedCorners();
+  const selectedId = activeSelectedCornerId();
+  els.trackHotspots.innerHTML = activeBriefingCorners().map((corner) => `
+    <button
+      class="track-hotspot ${corner.id === selectedId ? "is-active" : ""} ${learned.has(corner.id) ? "is-learned" : ""} ${isCustomEditor() ? "can-drag" : ""}"
+      data-corner-id="${escapeHtml(corner.id)}"
+      type="button"
+      style="left:${corner.x}%; top:${corner.y}%"
+      title="${escapeHtml(corner.name)}"
+      aria-label="${escapeHtml(corner.name)}"
+    >${escapeHtml(corner.label)}</button>
+  `).join("");
+}
+
+function renderCornerList() {
+  const learned = activeLearnedCorners();
+  const selectedId = activeSelectedCornerId();
+  const corners = [...activeBriefingCorners()].sort((a, b) => {
+    const byLabel = a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: "base" });
+    return byLabel || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+  });
+  els.cornerList.innerHTML = corners.length ? corners.map((corner) => `
+    <button class="corner-pill ${corner.id === selectedId ? "is-active" : ""}" data-corner-id="${escapeHtml(corner.id)}" type="button">
+      <span>${escapeHtml(corner.label)}</span>
+      <strong>${escapeHtml(corner.name)}</strong>
+      <em>${learned.has(corner.id) ? "Learned" : escapeHtml(corner.priority)}</em>
+    </button>
+  `).join("") : "<p class=\"empty-state\">Add the first point on the circuit map.</p>";
+}
+
+function renderPhotoGallery(corner) {
+  const photos = corner ? (state.cornerPhotos[corner.id] || []) : [];
+  els.cornerPhotoPreview.classList.toggle("has-photo", photos.length > 0);
+  els.cornerPhotoPreview.innerHTML = photos.length
+    ? photos.map((photo, index) => `
+        <figure class="photo-tile">
+          <img src="${typeof photo === "string" ? photo : photo.url}" alt="${escapeHtml(corner.name)} reference ${index + 1}" />
+          ${isCustomEditor() || state.briefingMode === "demo" ? `<button class="remove-photo-button" data-remove-photo="${index}" type="button" aria-label="Remove photo ${index + 1}">&times;</button>` : ""}
+        </figure>
+      `).join("")
+    : "<span>Add one or more visual references: marshal post, braking board, kerb start, bridge or tyre stack.</span>";
+}
+
+function releasePhotoReference(photo) {
+  URL.revokeObjectURL(typeof photo === "string" ? photo : photo.url);
+}
+
+function fillCornerEditForm(corner) {
+  if (!corner) return;
+  const values = {
+    label: corner.label,
+    priority: corner.priority,
+    name: corner.name,
+    sector: corner.sector,
+    brake: corner.brake,
+    speed: corner.speed,
+    gear: corner.gear,
+    cue: corner.cue,
+    tyre: corner.tyre,
+    coach: corner.coach,
+  };
+  Object.entries(values).forEach(([name, value]) => {
+    const field = els.cornerEditForm.elements.namedItem(name);
+    if (field) field.value = value;
+  });
+}
+
+function renderCornerDetail() {
+  const corner = selectedCorner();
+  if (!corner) {
+    els.activeCornerBadge.textContent = "No points yet";
+    els.cornerEditForm.hidden = true;
+    els.cornerReadView.hidden = true;
+    els.cornerPhotoLabel.textContent = "Visual references";
+    renderPhotoGallery(null);
+    return;
+  }
+  const learned = activeLearnedCorners().has(corner.id);
+  els.activeCornerBadge.textContent = corner.name;
+  els.cornerPhotoLabel.textContent = `${corner.label} visual references`;
+  if (isCustomEditor()) {
+    els.cornerEditForm.hidden = false;
+    els.cornerReadView.hidden = true;
+    fillCornerEditForm(corner);
+  } else {
+    els.cornerEditForm.hidden = true;
+    els.cornerReadView.hidden = false;
+    els.cornerPriority.textContent = corner.priority;
+    els.cornerTitle.textContent = corner.name;
+    els.cornerMeta.textContent = `${corner.sector} - ${learned ? "marked as learned" : "needs driver confirmation"}`;
+    els.cornerBrake.textContent = corner.brake;
+    els.cornerSpeed.textContent = corner.speed;
+    els.cornerGear.textContent = corner.gear;
+    els.cornerCue.textContent = corner.cue;
+    els.cornerTyre.textContent = corner.tyre;
+    els.cornerCoach.textContent = corner.coach;
+    els.markLearnedBtn.textContent = learned ? "Mark as open" : "Mark learned";
+    els.markLearnedBtn.classList.toggle("secondary", learned);
+    els.markLearnedBtn.classList.toggle("primary", !learned);
+  }
+  renderPhotoGallery(corner);
+}
+
+function splitWarmupStep(value, index) {
+  const [title, ...rest] = String(value || "").split("|");
+  return { title: title.trim() || `Step ${index + 1}`, detail: rest.join("|").trim() };
+}
+
+function renderWarmup() {
+  els.warmupTitle.textContent = state.briefingMode === "custom" ? state.customBriefing.warmupTitle : "Out-lap rhythm";
+  if (isCustomEditor()) {
+    els.customWarmupTitle.value = state.customBriefing.warmupTitle;
+    els.tyreSteps.innerHTML = activeWarmupSteps().map((value, index) => {
+      const step = splitWarmupStep(value, index);
+      return `
+        <div class="warmup-editor-item" data-warmup-index="${index}">
+          <span>${index + 1}</span>
+          <label>Title<input data-warmup-field="title" type="text" value="${escapeHtml(step.title)}" /></label>
+          <label>Instruction<textarea data-warmup-field="detail" rows="2">${escapeHtml(step.detail)}</textarea></label>
+          <button class="remove-list-item" data-remove-warmup="${index}" type="button" aria-label="Remove warm-up point">&times;</button>
+        </div>
+      `;
+    }).join("");
+    return;
+  }
+  els.tyreSteps.innerHTML = activeWarmupSteps().map((value, index) => {
+    const step = splitWarmupStep(value, index);
+    return `<div><span>${index + 1}</span><strong>${escapeHtml(step.title)}</strong><p>${escapeHtml(step.detail)}</p></div>`;
+  }).join("");
+}
+
+function renderChecklist() {
+  const learnedCount = activeLearnedCorners().size;
+  if (isCustomEditor()) {
+    els.checklistList.innerHTML = activeChecklist().map((item, index) => `
+      <div class="checklist-editor-item">
+        <span>${index + 1}</span>
+        <textarea data-checklist-index="${index}" rows="2">${escapeHtml(item)}</textarea>
+        <button class="remove-list-item" data-remove-checklist="${index}" type="button" aria-label="Remove reminder">&times;</button>
+      </div>
+    `).join("");
+    return;
+  }
+  els.checklistList.innerHTML = activeChecklist().map((item, index) => `
+    <label class="checklist-item">
+      <input type="checkbox" ${index < learnedCount ? "checked" : ""} disabled />
+      <span>${escapeHtml(item)}</span>
+    </label>
+  `).join("");
+}
+
+function renderBriefingSetup() {
+  if (!isCustomEditor()) return;
+  els.customPlanTitle.value = state.customBriefing.title;
+}
+
+function renderQuestionBank() {
+  if (!isCustomEditor()) return;
+  const questions = state.customBriefing.questions;
+  els.questionBankList.innerHTML = questions.length ? questions.map((question, index) => `
+    <article class="question-bank-item" data-question-id="${escapeHtml(question.id)}">
+      <div class="question-bank-number"><span>${index + 1}</span><button class="remove-list-item" data-delete-question="${escapeHtml(question.id)}" type="button" aria-label="Delete question ${index + 1}">&times;</button></div>
+      <div class="question-bank-fields">
+        <label>Topic<input data-question-field="topic" type="text" value="${escapeHtml(question.topic)}" placeholder="Warm-up, T1, procedure..." /></label>
+        <label class="question-wide">Question<input data-question-field="question" type="text" value="${escapeHtml(question.question)}" /></label>
+        <label>Answer A<input data-question-option="0" type="text" value="${escapeHtml(question.options[0])}" /></label>
+        <label>Answer B<input data-question-option="1" type="text" value="${escapeHtml(question.options[1])}" /></label>
+        <label>Answer C<input data-question-option="2" type="text" value="${escapeHtml(question.options[2])}" /></label>
+        <label>Correct answer<select data-question-field="answerIndex"><option value="0" ${question.answerIndex === 0 ? "selected" : ""}>Answer A</option><option value="1" ${question.answerIndex === 1 ? "selected" : ""}>Answer B</option><option value="2" ${question.answerIndex === 2 ? "selected" : ""}>Answer C</option></select></label>
+      </div>
+    </article>
+  `).join("") : "<p class=\"empty-state\">No questions yet. Add as many as the briefing needs.</p>";
+}
+
+function renderTestStatus() {
+  const mode = state.briefingMode;
+  const status = state.testStatus[mode] || "idle";
+  const passed = Boolean(state.testPassed[mode]);
+  els.testStatusBadge.classList.toggle("is-passed", passed);
+  els.testStatusBadge.classList.toggle("is-failed", status === "failed" && !passed);
+  els.testStatusBadge.textContent = passed ? "100% passed" : (status === "failed" ? "Review required" : "Not attempted");
+  els.testLaunchCopy.textContent = status === "failed" && !passed
+    ? "At least one answer was incorrect. The test does not reveal which one: review the complete briefing and try again."
+    : "Answer every question. Results appear only at the end and a perfect score is required.";
+}
+
+function renderBriefing() {
+  renderBriefingMode();
+  renderBriefingProgress();
+  renderTrackHotspots();
+  renderCornerList();
+  renderCornerDetail();
+  renderWarmup();
+  renderChecklist();
+  renderBriefingSetup();
+  renderQuestionBank();
+  renderTestStatus();
+}
+
+function selectCorner(id) {
+  if (!activeBriefingCorners().some((corner) => corner.id === id)) return;
+  setActiveSelectedCornerId(id);
+  persistWorkspace();
+  renderBriefing();
+}
+
+function setBriefingScreen(screen) {
+  if (!['demo', 'editor', 'pilot'].includes(screen)) return;
+  state.briefingMode = screen === "demo" ? "demo" : "custom";
+  if (screen !== "demo") state.customView = screen;
+  state.mapPlacementMode = false;
+  els.trackBoard.classList.remove("is-placing");
+  els.mapPlacementHint.hidden = true;
+  els.addHotspotBtn.textContent = "Add point";
+  persistWorkspace();
+  renderBriefing();
+}
+
+function toggleLearnedCorner() {
+  const corner = selectedCorner();
+  if (!corner) return;
+  const learned = activeLearnedCorners();
+  if (learned.has(corner.id)) learned.delete(corner.id);
+  else learned.add(corner.id);
+  persistWorkspace();
+  renderBriefing();
+}
+
+function cornerCorrectIndex(corner) {
+  if (Number.isInteger(corner.answerIndex)) return clamp(corner.answerIndex, 0, corner.options.length - 1);
+  return Math.max(0, corner.options.indexOf(corner.answer));
+}
+
+function activeTestQuestions() {
+  if (state.briefingMode === "custom") return state.customBriefing.questions;
+  return briefingCorners.map(questionFromCorner);
+}
+
+function renderTestQuestion() {
+  const run = state.testRun;
+  if (!run) return;
+  const question = run.questions[run.index];
+  els.testProgress.textContent = `Question ${run.index + 1}/${run.questions.length}`;
+  els.testCornerLabel.textContent = question.topic || `Q${run.index + 1}`;
+  els.testQuestionText.textContent = question.question;
+  els.testAnswerOptions.innerHTML = question.options.map((option, index) => `
+    <button class="test-answer-option" data-test-answer="${index}" type="button">${escapeHtml(option)}</button>
+  `).join("");
+}
+
+function updateTestTimer() {
+  if (!state.testRun) return;
+  els.testTimer.textContent = formatTestTime(performance.now() - state.testRun.startedAt);
+}
+
+function launchMiniTest() {
+  const allQuestions = activeTestQuestions();
+  const questions = allQuestions.filter((question) => question.question.trim() && question.options.every((option) => option.trim()));
+  if (!questions.length || questions.length !== allQuestions.length) {
+    window.alert("Add at least one question and complete its three answers before launching the test.");
+    return;
+  }
+  clearInterval(state.testTimerId);
+  state.testRun = {
+    mode: state.briefingMode,
+    questions: questions.map((question) => ({ ...question, options: [...question.options] })),
+    index: 0,
+    errorCount: 0,
+    startedAt: performance.now(),
+  };
+  els.testOverlayTitle.textContent = state.briefingMode === "custom" ? state.customBriefing.title : "Barcelona mini-test";
+  els.testQuestionCard.hidden = false;
+  els.testSuccessCard.hidden = true;
+  els.testFailureCard.hidden = true;
+  els.testOverlay.hidden = false;
+  document.body.classList.add("test-running");
+  updateTestTimer();
+  state.testTimerId = setInterval(updateTestTimer, 100);
+  renderTestQuestion();
+}
+
+function closeMiniTest() {
+  clearInterval(state.testTimerId);
+  state.testTimerId = null;
+  state.testRun = null;
+  els.testOverlay.hidden = true;
+  document.body.classList.remove("test-running");
+}
+
+function answerMiniTest(answerIndex) {
+  const run = state.testRun;
+  if (!run) return;
+  const question = run.questions[run.index];
+  if (answerIndex !== cornerCorrectIndex(question)) run.errorCount += 1;
+
+  if (run.index < run.questions.length - 1) {
+    run.index += 1;
+    renderTestQuestion();
+    return;
+  }
+
+  const elapsed = performance.now() - run.startedAt;
+  clearInterval(state.testTimerId);
+  state.testTimerId = null;
+  els.testTimer.textContent = formatTestTime(elapsed);
+  els.testQuestionCard.hidden = true;
+
+  if (run.errorCount > 0) {
+    state.testStatus[run.mode] = "failed";
+    state.testPassed[run.mode] = false;
+    const learned = run.mode === "custom" ? state.customLearnedCorners : state.learnedCorners;
+    learned.clear();
+    els.testFailureTime.textContent = formatTestTime(elapsed);
+    els.testSuccessCard.hidden = true;
+    els.testFailureCard.hidden = false;
+    persistWorkspace();
+    return;
+  }
+
+  state.testStatus[run.mode] = "passed";
+  state.testPassed[run.mode] = true;
+  const previousBest = state.bestTestTimes[run.mode];
+  if (!previousBest || elapsed < previousBest) state.bestTestTimes[run.mode] = Math.round(elapsed);
+  const learned = run.mode === "custom" ? state.customLearnedCorners : state.learnedCorners;
+  activeBriefingCorners().forEach((corner) => learned.add(corner.id));
+  els.testFinalTime.textContent = formatTestTime(elapsed);
+  els.testFailureCard.hidden = true;
+  els.testSuccessCard.hidden = false;
+  persistWorkspace();
+}
+
+function invalidateCustomTest() {
+  state.testPassed.custom = false;
+  state.testStatus.custom = "idle";
+}
+
+function updateSelectedCustomCorner(fieldName, value) {
+  if (state.briefingMode !== "custom") return;
+  const corner = selectedCorner();
+  if (!corner) return;
+  if (Object.hasOwn(corner, fieldName)) corner[fieldName] = value;
+  invalidateCustomTest();
+  persistWorkspace();
+  els.activeCornerBadge.textContent = corner.name;
+  els.cornerPhotoLabel.textContent = `${corner.label} visual references`;
+  renderTrackHotspots();
+  renderCornerList();
+  renderBriefingProgress();
+  renderTestStatus();
+}
+
+function toggleHotspotPlacement() {
+  if (state.briefingMode !== "custom") return;
+  state.mapPlacementMode = !state.mapPlacementMode;
+  els.trackBoard.classList.toggle("is-placing", state.mapPlacementMode);
+  els.mapPlacementHint.hidden = !state.mapPlacementMode;
+  els.addHotspotBtn.textContent = state.mapPlacementMode ? "Cancel placement" : "Add point";
+}
+
+function placeCustomHotspot(event) {
+  if (state.briefingMode !== "custom" || !state.mapPlacementMode) return;
+  const rect = els.trackBoard.getBoundingClientRect();
+  const pointNumber = state.customBriefing.corners.length + 1;
+  const corner = {
+    id: `custom-${uid()}`,
+    label: `P${pointNumber}`,
+    name: `New point ${pointNumber}`,
+    priority: "Key point",
+    sector: "Circuit",
+    brake: "Add reference",
+    speed: "Add speed",
+    gear: "Add gear",
+    cue: "Add a short memory cue.",
+    tyre: "Add tyre or energy guidance.",
+    coach: "Add the coach note.",
+    photoIds: [],
+    x: clamp(((event.clientX - rect.left) / rect.width) * 100, 3, 97),
+    y: clamp(((event.clientY - rect.top) / rect.height) * 100, 5, 95),
+  };
+  state.customBriefing.corners.push(corner);
+  state.customSelectedCornerId = corner.id;
+  invalidateCustomTest();
+  toggleHotspotPlacement();
+  persistWorkspace();
+  renderBriefing();
+  requestAnimationFrame(() => els.cornerEditForm.elements.namedItem("label")?.focus());
+}
+
+function clearCustomHotspots() {
+  if (!state.customBriefing.corners.length) return;
+  if (!window.confirm("Clear every point from the editable map and start positioning them from zero?")) return;
+  state.customBriefing.corners.forEach((corner) => {
+    (state.cornerPhotos[corner.id] || []).forEach(releasePhotoReference);
+    (corner.photoIds || []).forEach((id) => deleteBriefingAsset(id).catch(() => {}));
+    delete state.cornerPhotos[corner.id];
+  });
+  state.customBriefing.corners = [];
+  state.customSelectedCornerId = null;
+  state.customLearnedCorners.clear();
+  invalidateCustomTest();
+  persistWorkspace();
+  renderBriefing();
+}
+
+function startHotspotDrag(event) {
+  const button = event.target.closest("[data-corner-id]");
+  if (!button || !isCustomEditor()) return;
+  state.hotspotDrag = { id: button.dataset.cornerId, pointerId: event.pointerId };
+  state.hotspotDragMoved = false;
+  try { button.setPointerCapture?.(event.pointerId); } catch {}
+  event.preventDefault();
+}
+
+function moveHotspot(event) {
+  if (!state.hotspotDrag || state.hotspotDrag.pointerId !== event.pointerId) return;
+  const corner = state.customBriefing.corners.find((item) => item.id === state.hotspotDrag.id);
+  if (!corner) return;
+  const rect = els.trackBoard.getBoundingClientRect();
+  corner.x = clamp(((event.clientX - rect.left) / rect.width) * 100, 3, 97);
+  corner.y = clamp(((event.clientY - rect.top) / rect.height) * 100, 5, 95);
+  const button = event.target.closest("[data-corner-id]");
+  if (button) {
+    button.style.left = `${corner.x}%`;
+    button.style.top = `${corner.y}%`;
+  }
+  state.hotspotDragMoved = true;
+}
+
+function finishHotspotDrag(event) {
+  if (!state.hotspotDrag || state.hotspotDrag.pointerId !== event.pointerId) return;
+  state.customSelectedCornerId = state.hotspotDrag.id;
+  state.hotspotDrag = null;
+  persistWorkspace();
+  if (state.hotspotDragMoved) {
+    renderCornerList();
+    renderCornerDetail();
+  }
+}
+
+function deleteSelectedCustomCorner() {
+  if (state.briefingMode !== "custom") return;
+  const corner = selectedCorner();
+  if (!corner || !window.confirm(`Delete ${corner.label} and its briefing card?`)) return;
+  const photos = state.cornerPhotos[corner.id] || [];
+  photos.forEach(releasePhotoReference);
+  (corner.photoIds || []).forEach((id) => deleteBriefingAsset(id).catch(() => {}));
+  delete state.cornerPhotos[corner.id];
+  state.customBriefing.corners = state.customBriefing.corners.filter((item) => item.id !== corner.id);
+  state.customLearnedCorners.delete(corner.id);
+  state.customSelectedCornerId = state.customBriefing.corners[0]?.id || null;
+  invalidateCustomTest();
+  persistWorkspace();
+  renderBriefing();
+}
+
+function updateCustomSetup(field, value) {
+  if (field === "title") state.customBriefing.title = value;
+  if (field === "warmupTitle") state.customBriefing.warmupTitle = value;
+  invalidateCustomTest();
+  persistWorkspace();
+  els.trackPlanTitle.textContent = state.customBriefing.title || "Editable circuit plan";
+  els.warmupTitle.textContent = state.customBriefing.warmupTitle || "Tyre warm-up";
+  renderTestStatus();
+  renderBriefingProgress();
+}
+
+function addWarmupStep() {
+  state.customBriefing.warmupSteps.push("New point|Add the instruction for the driver.");
+  invalidateCustomTest();
+  persistWorkspace();
+  renderWarmup();
+}
+
+function updateWarmupStep(index, field, value) {
+  const step = splitWarmupStep(state.customBriefing.warmupSteps[index], index);
+  step[field] = value;
+  state.customBriefing.warmupSteps[index] = `${step.title}|${step.detail}`;
+  invalidateCustomTest();
+  persistWorkspace();
+  renderTestStatus();
+}
+
+function removeWarmupStep(index) {
+  state.customBriefing.warmupSteps.splice(index, 1);
+  invalidateCustomTest();
+  persistWorkspace();
+  renderWarmup();
+  renderTestStatus();
+}
+
+function addChecklistItem() {
+  state.customBriefing.checklist.push("Add a new reminder for the driver.");
+  invalidateCustomTest();
+  persistWorkspace();
+  renderChecklist();
+}
+
+function updateChecklistItem(index, value) {
+  state.customBriefing.checklist[index] = value;
+  invalidateCustomTest();
+  persistWorkspace();
+  renderTestStatus();
+}
+
+function removeChecklistItem(index) {
+  state.customBriefing.checklist.splice(index, 1);
+  invalidateCustomTest();
+  persistWorkspace();
+  renderChecklist();
+  renderTestStatus();
+}
+
+function addQuestion() {
+  state.customBriefing.questions.push({
+    id: `question-${uid()}`,
+    topic: "New topic",
+    question: "Write the question here.",
+    options: ["Correct answer", "Alternative B", "Alternative C"],
+    answerIndex: 0,
+  });
+  invalidateCustomTest();
+  persistWorkspace();
+  renderQuestionBank();
+}
+
+function updateQuestion(questionId, field, value, optionIndex = null) {
+  const question = state.customBriefing.questions.find((item) => item.id === questionId);
+  if (!question) return;
+  if (optionIndex !== null) question.options[optionIndex] = value;
+  else if (field === "answerIndex") question.answerIndex = clamp(parseNumber(value, 0), 0, 2);
+  else if (Object.hasOwn(question, field)) question[field] = value;
+  invalidateCustomTest();
+  persistWorkspace();
+  renderTestStatus();
+}
+
+function deleteQuestion(questionId) {
+  state.customBriefing.questions = state.customBriefing.questions.filter((question) => question.id !== questionId);
+  invalidateCustomTest();
+  persistWorkspace();
+  renderQuestionBank();
+  renderTestStatus();
+}
+
+function previewCustomBriefing() {
+  state.customView = "pilot";
+  state.mapPlacementMode = false;
+  persistWorkspace();
+  renderBriefing();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function editCustomBriefing() {
+  state.customView = "editor";
+  persistWorkspace();
+  renderBriefing();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function resetEditableBriefing() {
+  if (!window.confirm("Restore the editable briefing to the Barcelona example? Your custom text and points will be replaced.")) return;
+  if (state.customMapUrl) URL.revokeObjectURL(state.customMapUrl);
+  state.customMapUrl = null;
+  deleteBriefingAsset(CUSTOM_MAP_ASSET_KEY).catch(() => {});
+  state.customBriefing.corners.forEach((corner) => {
+    (state.cornerPhotos[corner.id] || []).forEach(releasePhotoReference);
+    (corner.photoIds || []).forEach((id) => deleteBriefingAsset(id).catch(() => {}));
+    delete state.cornerPhotos[corner.id];
+  });
+  state.customBriefing = createEditableBriefing();
+  state.customSelectedCornerId = state.customBriefing.corners[0].id;
+  state.customView = "editor";
+  state.customLearnedCorners.clear();
+  invalidateCustomTest();
+  persistWorkspace();
+  renderBriefing();
+}
+
 function renameSlotLap(slot, value) {
   const lap = lapForSlot(slot);
   if (!lap) return;
@@ -1002,6 +1983,141 @@ async function exportLapCopy(lap) {
 }
 
 document.querySelectorAll(".mode-tab").forEach((tab) => tab.addEventListener("click", () => setView(tab.dataset.view)));
+els.briefingModeTabs.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-briefing-screen]");
+  if (button) setBriefingScreen(button.dataset.briefingScreen);
+});
+els.trackHotspots.addEventListener("click", (event) => {
+  if (state.hotspotDragMoved) {
+    state.hotspotDragMoved = false;
+    return;
+  }
+  const button = event.target.closest("[data-corner-id]");
+  if (button) selectCorner(button.dataset.cornerId);
+});
+els.trackHotspots.addEventListener("pointerdown", startHotspotDrag);
+els.trackHotspots.addEventListener("pointermove", moveHotspot);
+els.trackHotspots.addEventListener("pointerup", finishHotspotDrag);
+els.trackHotspots.addEventListener("pointercancel", finishHotspotDrag);
+els.cornerList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-corner-id]");
+  if (button) selectCorner(button.dataset.cornerId);
+});
+els.markLearnedBtn.addEventListener("click", toggleLearnedCorner);
+els.cornerPhotoInput.addEventListener("change", async (event) => {
+  const corner = selectedCorner();
+  if (!corner) return;
+  const files = [...(event.target.files || [])].filter((file) => file.type.startsWith("image/"));
+  if (!files.length) return;
+  state.cornerPhotos[corner.id] ||= [];
+  const entries = files.map((file) => ({ id: `briefing-photo-${uid()}`, url: URL.createObjectURL(file), file }));
+  state.cornerPhotos[corner.id].push(...entries.map(({ id, url }) => ({ id, url })));
+  if (state.briefingMode === "custom") {
+    corner.photoIds ||= [];
+    corner.photoIds.push(...entries.map(({ id }) => id));
+    await Promise.all(entries.map(({ id, file }) => saveBriefingAsset(id, file).catch(() => {})));
+    persistWorkspace();
+  }
+  renderCornerDetail();
+  event.target.value = "";
+});
+els.cornerPhotoPreview.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-remove-photo]");
+  const corner = selectedCorner();
+  if (!button || !corner) return;
+  const index = Number(button.dataset.removePhoto);
+  const photos = state.cornerPhotos[corner.id] || [];
+  const [removed] = photos.splice(index, 1);
+  if (removed) {
+    releasePhotoReference(removed);
+    if (state.briefingMode === "custom" && removed.id) {
+      corner.photoIds = (corner.photoIds || []).filter((id) => id !== removed.id);
+      deleteBriefingAsset(removed.id).catch(() => {});
+      persistWorkspace();
+    }
+  }
+  renderPhotoGallery(corner);
+});
+els.cornerEditForm.addEventListener("input", (event) => {
+  if (event.target.name) updateSelectedCustomCorner(event.target.name, event.target.value);
+});
+els.cornerEditForm.addEventListener("change", (event) => {
+  if (event.target.name) updateSelectedCustomCorner(event.target.name, event.target.value);
+});
+els.deleteCornerBtn.addEventListener("click", deleteSelectedCustomCorner);
+els.addHotspotBtn.addEventListener("click", toggleHotspotPlacement);
+els.clearHotspotsBtn.addEventListener("click", clearCustomHotspots);
+els.trackBoard.addEventListener("click", (event) => {
+  if (!event.target.closest("[data-corner-id]")) placeCustomHotspot(event);
+});
+els.trackMapInput.addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file || !file.type.startsWith("image/")) return;
+  if (state.customMapUrl) URL.revokeObjectURL(state.customMapUrl);
+  state.customMapUrl = URL.createObjectURL(file);
+  els.uploadedTrackMap.src = state.customMapUrl;
+  els.uploadedTrackMap.hidden = false;
+  els.defaultTrackMap.setAttribute("hidden", "");
+  await saveBriefingAsset(CUSTOM_MAP_ASSET_KEY, file).catch(() => {});
+  event.target.value = "";
+});
+els.customPlanTitle.addEventListener("input", (event) => updateCustomSetup("title", event.target.value));
+els.customWarmupTitle.addEventListener("input", (event) => updateCustomSetup("warmupTitle", event.target.value));
+els.addWarmupStepBtn.addEventListener("click", addWarmupStep);
+els.tyreSteps.addEventListener("input", (event) => {
+  const item = event.target.closest("[data-warmup-index]");
+  const field = event.target.dataset.warmupField;
+  if (item && field) updateWarmupStep(Number(item.dataset.warmupIndex), field, event.target.value);
+});
+els.tyreSteps.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-remove-warmup]");
+  if (button) removeWarmupStep(Number(button.dataset.removeWarmup));
+});
+els.addChecklistItemBtn.addEventListener("click", addChecklistItem);
+els.checklistList.addEventListener("input", (event) => {
+  if (event.target.matches("[data-checklist-index]")) updateChecklistItem(Number(event.target.dataset.checklistIndex), event.target.value);
+});
+els.checklistList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-remove-checklist]");
+  if (button) removeChecklistItem(Number(button.dataset.removeChecklist));
+});
+els.addQuestionBtn.addEventListener("click", addQuestion);
+els.questionBankList.addEventListener("input", (event) => {
+  const item = event.target.closest("[data-question-id]");
+  if (!item) return;
+  if (event.target.dataset.questionOption !== undefined) {
+    updateQuestion(item.dataset.questionId, null, event.target.value, Number(event.target.dataset.questionOption));
+  } else if (event.target.dataset.questionField) {
+    updateQuestion(item.dataset.questionId, event.target.dataset.questionField, event.target.value);
+  }
+});
+els.questionBankList.addEventListener("change", (event) => {
+  const item = event.target.closest("[data-question-id]");
+  if (item && event.target.dataset.questionField === "answerIndex") {
+    updateQuestion(item.dataset.questionId, "answerIndex", event.target.value);
+  }
+});
+els.questionBankList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-delete-question]");
+  if (button) deleteQuestion(button.dataset.deleteQuestion);
+});
+els.resetCustomBriefingBtn.addEventListener("click", resetEditableBriefing);
+els.previewBriefingBtn.addEventListener("click", previewCustomBriefing);
+els.editBriefingBtn.addEventListener("click", editCustomBriefing);
+[els.launchTestBtn, els.launchTestSideBtn].forEach((button) => button.addEventListener("click", launchMiniTest));
+els.testAnswerOptions.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-test-answer]");
+  if (button) answerMiniTest(Number(button.dataset.testAnswer));
+});
+els.exitTestBtn.addEventListener("click", closeMiniTest);
+els.finishTestBtn.addEventListener("click", () => {
+  closeMiniTest();
+  renderBriefing();
+});
+els.finishFailedTestBtn.addEventListener("click", () => {
+  closeMiniTest();
+  renderBriefing();
+});
 els.videoInput.addEventListener("change", (event) => addFiles(event.target.files));
 els.comparisonVideoInput.addEventListener("change", (event) => addReadyLapFiles(event.target.files));
 
@@ -1182,5 +2298,7 @@ els.exportBtn.addEventListener("click", () => {
 
 renderCutter();
 renderComparison();
+renderBriefing();
+restoreBriefingAssets();
 setPlayButtonState(els.cutterPlay, false, "session");
 setPlayButtonState(els.playBtn, false, "comparison");

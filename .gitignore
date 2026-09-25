@@ -4,6 +4,8 @@ Thumbs.db
 node_modules/
 dist/
 build/
+output/
+tmp/
 .env
 .env.*
 !.env.example

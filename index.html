@@ -16,6 +16,7 @@
           <h1>Onboard lap workspace</h1>
         </div>
         <div class="topbar-actions">
+          <a class="button secondary guide-button" href="assets/trident-onboard-quick-guide.pdf" target="_blank" rel="noopener">View guide</a>
           <label class="button primary" for="videoInput">Load onboard video</label>
           <input id="videoInput" type="file" accept="video/*" multiple />
           <button id="exportBtn" class="button secondary" type="button">Export review</button>
@@ -25,6 +26,7 @@
       <nav class="mode-tabs" aria-label="Workspace mode">
         <button class="mode-tab is-active" data-view="cutter" type="button">Cut laps</button>
         <button class="mode-tab" data-view="compare" type="button">Compare <span id="lapCountBadge" class="tab-count">0</span></button>
+        <button class="mode-tab" data-view="briefing" type="button">Briefing <span id="briefingProgress" class="tab-count">0%</span></button>
       </nav>
 
       <main>
@@ -212,6 +214,194 @@
             </section>
           </section>
         </section>
+
+        <section id="briefingView" class="view-panel" aria-label="Circuit briefing" hidden>
+          <section class="briefing-panel">
+            <div class="briefing-hero">
+              <div>
+                <p id="briefingContextLabel" class="eyebrow">Example briefing</p>
+                <h2 id="briefingTitle">Circuit memory board</h2>
+                <p id="briefingDescription">Transform the team report into short actions: braking references, target speeds, tyre care and a quick retention test before the driver goes on track.</p>
+                <div id="briefingModeTabs" class="briefing-mode-tabs" role="tablist" aria-label="Briefing workspace mode">
+                  <button class="briefing-mode-tab is-active" data-briefing-screen="demo" role="tab" aria-selected="true" type="button">
+                    <span>1</span><strong>Barcelona example</strong><small>Reference</small>
+                  </button>
+                  <button class="briefing-mode-tab" data-briefing-screen="editor" role="tab" aria-selected="false" type="button">
+                    <span>2</span><strong>Team editor</strong><small>Build</small>
+                  </button>
+                  <button class="briefing-mode-tab" data-briefing-screen="pilot" role="tab" aria-selected="false" type="button">
+                    <span>3</span><strong>Driver view</strong><small>Study</small>
+                  </button>
+                </div>
+              </div>
+              <div class="briefing-hero-actions">
+                <div id="briefingRetryBadge" class="briefing-retry-badge" hidden>
+                  <span>Test not passed</span>
+                  <strong>Review the full briefing</strong>
+                </div>
+                <div id="briefingPassBadge" class="briefing-pass-badge" hidden>
+                  <span>Driver cleared</span>
+                  <strong id="briefingBestTime">Perfect test</strong>
+                </div>
+                <div class="briefing-score">
+                  <span>Ready score</span>
+                  <strong id="briefingReadyScore">0/0</strong>
+                </div>
+                <button id="previewBriefingBtn" class="button primary" type="button" hidden>Save &amp; preview as driver</button>
+                <button id="editBriefingBtn" class="button secondary" type="button" hidden>Back to editor</button>
+                <button id="launchTestBtn" class="button primary" type="button">Launch mini-test</button>
+              </div>
+            </div>
+
+            <div class="briefing-layout">
+              <section class="briefing-map-panel" aria-label="Circuit map">
+                <div class="panel-heading">
+                  <div><p class="eyebrow">Track focus</p><h2 id="trackPlanTitle">Barcelona sample plan</h2></div>
+                  <div class="map-heading-actions">
+                    <span id="activeCornerBadge" class="stage-meta">T1 braking</span>
+                    <div id="customMapControls" class="custom-map-controls" hidden>
+                      <label class="button secondary" for="trackMapInput">Load circuit map</label>
+                      <input id="trackMapInput" type="file" accept="image/*" />
+                      <button id="addHotspotBtn" class="button primary" type="button">Add point</button>
+                      <button id="clearHotspotsBtn" class="button danger" type="button">Clear points</button>
+                    </div>
+                  </div>
+                </div>
+                <div id="trackBoard" class="track-board">
+                  <svg id="defaultTrackMap" class="track-map" viewBox="0 0 760 420" role="img" aria-label="Simplified circuit map with critical corners">
+                    <path class="track-shadow" d="M96 250 C125 105 270 60 425 82 C600 108 700 170 670 260 C635 365 470 360 398 300 C338 250 284 255 238 315 C196 370 88 338 96 250" />
+                    <path class="track-line" d="M96 250 C125 105 270 60 425 82 C600 108 700 170 670 260 C635 365 470 360 398 300 C338 250 284 255 238 315 C196 370 88 338 96 250" />
+                    <path class="brake-zone" d="M104 220 C120 158 166 111 228 88" />
+                    <path class="brake-zone" d="M601 130 C663 164 692 211 674 262" />
+                    <path class="brake-zone" d="M375 293 C337 260 292 258 252 298" />
+                  </svg>
+                  <img id="uploadedTrackMap" class="uploaded-track-map" alt="Uploaded circuit map" hidden />
+                  <div id="trackHotspots" class="track-hotspots"></div>
+                  <div id="mapPlacementHint" class="map-placement-hint" hidden>Click anywhere on the map to place the new point</div>
+                </div>
+                <div class="corner-list" id="cornerList" aria-label="Critical corners"></div>
+              </section>
+
+              <section class="corner-detail-panel" aria-label="Selected corner details">
+                <div id="cornerReadView">
+                  <div class="corner-detail-heading">
+                    <div>
+                      <p class="eyebrow" id="cornerPriority">High priority</p>
+                      <h2 id="cornerTitle">T1 braking</h2>
+                      <p id="cornerMeta" class="review-pair">Select a corner to load the briefing card.</p>
+                    </div>
+                    <button id="markLearnedBtn" class="button primary" type="button">Mark learned</button>
+                  </div>
+
+                  <div class="driver-card-grid">
+                    <div class="driver-card"><span>Brake</span><strong id="cornerBrake">100 m board</strong></div>
+                    <div class="driver-card"><span>Min speed</span><strong id="cornerSpeed">118 km/h</strong></div>
+                    <div class="driver-card"><span>Gear</span><strong id="cornerGear">4th</strong></div>
+                  </div>
+
+                  <div class="memory-card">
+                    <span>Memory cue</span>
+                    <strong id="cornerCue">Brake straight, finish rotation before T2.</strong>
+                  </div>
+
+                  <div class="corner-brief-grid">
+                    <article>
+                      <p class="eyebrow">Tyre / energy</p>
+                      <p id="cornerTyre">No sliding on entry; keep front-left temperature for T3.</p>
+                    </article>
+                    <article>
+                      <p class="eyebrow">Coach note</p>
+                      <p id="cornerCoach">Do not chase the car ahead into the braking point.</p>
+                    </article>
+                  </div>
+                </div>
+
+                <form id="cornerEditForm" class="corner-edit-form" hidden>
+                  <div class="editor-heading">
+                    <div><p class="eyebrow">Point editor</p><h2>Edit selected point</h2></div>
+                    <button id="deleteCornerBtn" class="button danger" type="button">Delete point</button>
+                  </div>
+                  <div class="editor-field-grid">
+                    <label>Bubble label<input name="label" type="text" maxlength="8" placeholder="T1, S1..." /></label>
+                    <label>Priority title<input name="priority" type="text" placeholder="High priority" /></label>
+                    <label class="editor-wide">Panel title<input name="name" type="text" placeholder="T1 braking" /></label>
+                    <label>Sector / group<input name="sector" type="text" placeholder="Sector 1" /></label>
+                    <label>Brake reference<input name="brake" type="text" placeholder="100 m board" /></label>
+                    <label>Minimum speed<input name="speed" type="text" placeholder="118 km/h" /></label>
+                    <label>Gear<input name="gear" type="text" placeholder="4th" /></label>
+                    <label class="editor-wide">Memory cue<textarea name="cue" rows="2"></textarea></label>
+                    <label class="editor-wide">Tyre / energy note<textarea name="tyre" rows="2"></textarea></label>
+                    <label class="editor-wide">Coach note<textarea name="coach" rows="2"></textarea></label>
+                  </div>
+                </form>
+
+                <div class="reference-photo-panel">
+                  <div>
+                    <p class="eyebrow">Photo reference</p>
+                    <h2 id="cornerPhotoLabel">T1 braking marker</h2>
+                  </div>
+                  <label id="cornerPhotoUploadLabel" class="button secondary" for="cornerPhotoInput">Add photo</label>
+                  <input id="cornerPhotoInput" type="file" accept="image/*" multiple />
+                  <div id="cornerPhotoPreview" class="corner-photo-preview">
+                    <span>Drop in a braking-marker photo here later: marshal post, 100 m board, kerb start, bridge, tyre stack.</span>
+                  </div>
+                </div>
+              </section>
+
+              <aside class="briefing-side-panel" aria-label="Briefing checklist and quiz">
+                <section class="tyre-plan">
+                  <div class="inline-editor-heading">
+                    <div>
+                      <p class="eyebrow">Tyre warm-up</p>
+                      <h2 id="warmupTitle">Out-lap rhythm</h2>
+                      <input id="customWarmupTitle" class="inline-title-input" type="text" aria-label="Warm-up title" hidden />
+                    </div>
+                    <button id="addWarmupStepBtn" class="icon-button" type="button" aria-label="Add warm-up point" title="Add warm-up point" hidden>+</button>
+                  </div>
+                  <div id="tyreSteps" class="tyre-steps"></div>
+                </section>
+
+                <section class="checklist-panel">
+                  <div class="panel-heading">
+                    <div><p class="eyebrow">Before driving</p><h2>Must remember</h2></div>
+                    <button id="addChecklistItemBtn" class="icon-button" type="button" aria-label="Add reminder" title="Add reminder" hidden>+</button>
+                  </div>
+                  <div id="checklistList" class="checklist-list"></div>
+                </section>
+
+                <section id="briefingSetupPanel" class="briefing-setup-panel" hidden>
+                  <p class="eyebrow">Briefing setup</p>
+                  <h2>Edit general strategy</h2>
+                  <div class="setup-fields">
+                    <label>Circuit / plan title<input id="customPlanTitle" type="text" /></label>
+                  </div>
+                  <button id="resetCustomBriefingBtn" class="text-button" type="button">Restore editable example</button>
+                </section>
+
+                <section id="testLaunchPanel" class="quiz-panel test-launch-panel">
+                  <div class="panel-heading">
+                    <div><p class="eyebrow">Mini-test</p><h2>Perfect run required</h2></div>
+                    <span id="testStatusBadge" class="stage-meta">Not attempted</span>
+                  </div>
+                  <p id="testLaunchCopy" class="quiz-feedback">Study every point, then complete every question correctly. One mistake sends you back to the briefing.</p>
+                  <button id="launchTestSideBtn" class="button primary test-launch-button" type="button">Launch mini-test</button>
+                </section>
+              </aside>
+            </div>
+
+            <section id="questionBankPanel" class="question-bank-panel" hidden>
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">Mini-test builder</p>
+                  <h2>Question bank</h2>
+                  <p class="review-pair">Questions can cover corners, warm-up, procedures or any topic in the briefing.</p>
+                </div>
+                <button id="addQuestionBtn" class="button primary" type="button">Add question</button>
+              </div>
+              <div id="questionBankList" class="question-bank-list"></div>
+            </section>
+          </section>
+        </section>
       </main>
     </div>
 
@@ -223,6 +413,41 @@
       <progress id="exportProgress" max="100" value="0"></progress>
       <button id="cancelExportBtn" class="text-button" type="button">Cancel</button>
     </div>
+
+    <section id="testOverlay" class="test-overlay" aria-label="Driver mini-test" hidden>
+      <header class="test-overlay-header">
+        <div><p class="eyebrow">Driver challenge</p><h2 id="testOverlayTitle">Circuit mini-test</h2></div>
+        <div class="test-run-stats">
+          <span id="testProgress">Question 1/5</span>
+          <strong id="testTimer">00:00.0</strong>
+          <button id="exitTestBtn" class="button secondary" type="button">Exit test</button>
+        </div>
+      </header>
+      <main class="test-stage">
+        <div id="testQuestionCard" class="test-question-card">
+          <span id="testCornerLabel" class="test-corner-label">T1</span>
+          <h2 id="testQuestionText">Question loads here.</h2>
+          <div id="testAnswerOptions" class="test-answer-options"></div>
+          <p id="testRuleCopy" class="test-rule-copy">Choose carefully. Correct answers are not revealed after a mistake.</p>
+        </div>
+        <div id="testSuccessCard" class="test-success-card" hidden>
+          <span class="success-check" aria-hidden="true">&#10003;</span>
+          <p class="eyebrow">100% correct</p>
+          <h2>Driver cleared for the circuit</h2>
+          <strong id="testFinalTime">00:00.0</strong>
+          <p>Every reference was recalled correctly.</p>
+          <button id="finishTestBtn" class="button primary" type="button">Return to briefing</button>
+        </div>
+        <div id="testFailureCard" class="test-failure-card" hidden>
+          <span class="failure-mark" aria-hidden="true">!</span>
+          <p class="eyebrow">Test not passed</p>
+          <h2>There was at least one error</h2>
+          <strong id="testFailureTime">00:00.0</strong>
+          <p>The incorrect answer is not revealed. Review the complete briefing and try again.</p>
+          <button id="finishFailedTestBtn" class="button primary" type="button">Return to study</button>
+        </div>
+      </main>
+    </section>
 
     <script src="src/app.js"></script>
   </body>

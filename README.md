@@ -18,6 +18,7 @@ Browser app for cutting complete onboard sessions into laps and comparing them s
 - Download a readable comments report named after both compared laps.
 - Save an individual lap as a local video copy.
 - Export a JSON notes file for review.
+- Open the illustrated five-page quick guide directly from the workspace.
 
 The app runs completely in the browser. It does not upload videos anywhere.
 
