@@ -52,22 +52,34 @@
                 </div>
 
                 <div class="cutter-transport">
-                  <div class="transport-buttons">
-                    <button class="icon-button" id="cutterBackFive" type="button" title="Back 5 seconds">-5s</button>
-                    <button class="icon-button" id="cutterBackFrame" type="button" title="Previous frame">-1f</button>
-                    <button class="button secondary play-button" id="cutterPlay" type="button">Play</button>
-                    <button class="icon-button" id="cutterForwardFrame" type="button" title="Next frame">+1f</button>
-                    <button class="icon-button" id="cutterForwardFive" type="button" title="Forward 5 seconds">+5s</button>
+                  <div class="transport-buttons media-control-group" aria-label="Session playback controls">
+                    <button class="media-icon-button skip-control" id="cutterBackFive" type="button" title="Back 5 seconds" aria-label="Back 5 seconds">
+                      <span class="skip-arrow" aria-hidden="true">&#8634;</span><span class="skip-value" aria-hidden="true">5</span>
+                    </button>
+                    <button class="media-icon-button" id="cutterBackFrame" type="button" title="Previous frame" aria-label="Previous frame">
+                      <span class="step-glyph" aria-hidden="true">&#10072;&#9664;</span>
+                    </button>
+                    <button class="media-play-button" id="cutterPlay" type="button" data-state="play" title="Play session" aria-label="Play session" aria-pressed="false">
+                      <span class="play-glyph" aria-hidden="true">&#9654;</span>
+                      <span class="pause-glyph" aria-hidden="true">&#10074;&#10074;</span>
+                    </button>
+                    <button class="media-icon-button" id="cutterForwardFrame" type="button" title="Next frame" aria-label="Next frame">
+                      <span class="step-glyph" aria-hidden="true">&#9654;&#10072;</span>
+                    </button>
+                    <button class="media-icon-button skip-control skip-forward" id="cutterForwardFive" type="button" title="Forward 5 seconds" aria-label="Forward 5 seconds">
+                      <span class="skip-arrow" aria-hidden="true">&#8635;</span><span class="skip-value" aria-hidden="true">5</span>
+                    </button>
                   </div>
-                  <label class="checkbox-line cutter-sound-control">
+                  <label class="toggle-control cutter-sound-control">
                     <input id="cutterSoundToggle" type="checkbox" checked />
-                    Sound
+                    <span class="toggle-ui" aria-hidden="true"></span>
+                    <span>Sound</span>
                   </label>
                   <button class="button primary mark-crossing-button" id="markCrossingBtn" type="button">Mark finish-line crossing</button>
                 </div>
 
                 <div class="session-timeline">
-                  <input id="cutterTimeline" type="range" min="0" max="1" step="0.001" value="0" />
+                  <input id="cutterTimeline" class="media-scrubber" type="range" min="0" max="1" step="0.001" value="0" aria-label="Session timeline" />
                   <div id="crossingMarkers" class="crossing-markers" aria-hidden="true"></div>
                 </div>
 
@@ -119,15 +131,24 @@
             </div>
 
             <div class="control-strip">
-              <div class="playback-controls">
-                <button id="restartBtn" class="icon-button" type="button" title="Restart lap">0:00</button>
-                <button id="stepBackBtn" class="icon-button" type="button" title="Step back">-1f</button>
-                <button id="playBtn" class="button primary play-button" type="button">Play</button>
-                <button id="stepForwardBtn" class="icon-button" type="button" title="Step forward">+1f</button>
+              <div class="playback-controls media-control-group" aria-label="Comparison playback controls">
+                <button id="restartBtn" class="media-icon-button" type="button" title="Restart laps" aria-label="Restart laps">
+                  <span class="restart-glyph" aria-hidden="true">&#8634;</span>
+                </button>
+                <button id="stepBackBtn" class="media-icon-button" type="button" title="Previous frame" aria-label="Previous frame">
+                  <span class="step-glyph" aria-hidden="true">&#10072;&#9664;</span>
+                </button>
+                <button id="playBtn" class="media-play-button" type="button" data-state="play" title="Play comparison" aria-label="Play comparison" aria-pressed="false">
+                  <span class="play-glyph" aria-hidden="true">&#9654;</span>
+                  <span class="pause-glyph" aria-hidden="true">&#10074;&#10074;</span>
+                </button>
+                <button id="stepForwardBtn" class="media-icon-button" type="button" title="Next frame" aria-label="Next frame">
+                  <span class="step-glyph" aria-hidden="true">&#9654;&#10072;</span>
+                </button>
               </div>
               <div class="timeline-control">
                 <div class="time-readout"><span id="currentTime">0:00.000</span><span id="lapLength">0:00.000</span></div>
-                <input id="timeline" type="range" min="0" max="1" step="0.001" value="0" />
+                <input id="timeline" class="media-scrubber" type="range" min="0" max="1" step="0.001" value="0" aria-label="Comparison timeline" />
               </div>
               <div class="compact-controls">
                 <label>Audio
@@ -140,7 +161,7 @@
                 <label>Speed
                   <select id="speedSelect"><option value="0.25">0.25x</option><option value="0.5">0.5x</option><option value="1" selected>1x</option><option value="1.5">1.5x</option><option value="2">2x</option></select>
                 </label>
-                <label class="checkbox-line"><input id="loopToggle" type="checkbox" checked /> Loop</label>
+                <label class="toggle-control"><input id="loopToggle" type="checkbox" checked /><span class="toggle-ui" aria-hidden="true"></span><span>Loop</span></label>
               </div>
             </div>
 

@@ -78,6 +78,22 @@ function formatTime(value) {
   return hours ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}` : base;
 }
 
+function setPlayButtonState(button, isPlaying, subject) {
+  const action = isPlaying ? "Pause" : "Play";
+  button.dataset.state = isPlaying ? "pause" : "play";
+  button.title = `${action} ${subject}`;
+  button.setAttribute("aria-label", `${action} ${subject}`);
+  button.setAttribute("aria-pressed", String(isPlaying));
+}
+
+function updateRangeProgress(input) {
+  const min = parseNumber(input.min, 0);
+  const max = parseNumber(input.max, 1);
+  const value = clamp(parseNumber(input.value, min), min, max);
+  const progress = max > min ? ((value - min) / (max - min)) * 100 : 0;
+  input.style.setProperty("--range-progress", `${progress}%`);
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -335,13 +351,16 @@ function loadCutterSource() {
     els.cutterVideo.dataset.sourceId = source.id;
     els.cutterVideo.load();
     els.cutterTimeline.value = "0";
+    updateRangeProgress(els.cutterTimeline);
     els.cutterClock.textContent = formatTime(0);
     els.cutterVideo.addEventListener("loadedmetadata", () => {
       els.cutterTimeline.max = String(source.duration || els.cutterVideo.duration || 1);
+      updateRangeProgress(els.cutterTimeline);
       schedulePrecisionFrames(0);
     }, { once: true });
   } else {
     els.cutterTimeline.max = String(source.duration || 1);
+    updateRangeProgress(els.cutterTimeline);
   }
 }
 
@@ -351,9 +370,10 @@ function updateCutterTime() {
   const time = clamp(els.cutterVideo.currentTime || 0, 0, source.duration || Infinity);
   els.cutterClock.textContent = formatTime(time);
   els.cutterTimeline.value = String(time);
+  updateRangeProgress(els.cutterTimeline);
   if (state.cutterPreviewEnd !== null && time >= state.cutterPreviewEnd - 0.03) {
     els.cutterVideo.pause();
-    els.cutterPlay.textContent = "Play";
+    setPlayButtonState(els.cutterPlay, false, "session");
     state.cutterPreviewEnd = null;
   }
 }
@@ -557,6 +577,7 @@ function updateTimeline() {
   const max = comparisonLength();
   els.timeline.max = String(Math.max(max, 0.001));
   els.timeline.value = String(clamp(state.relTime, 0, max || 0));
+  updateRangeProgress(els.timeline);
   els.currentTime.textContent = formatTime(state.relTime);
   els.lapLength.textContent = formatTime(max);
 }
@@ -603,6 +624,12 @@ function renderNotes() {
 
 function renderComparison() {
   chooseDefaultSlots();
+  const hasPlayableLap = Boolean(lapForSlot("A") || lapForSlot("B"));
+  els.playBtn.disabled = !hasPlayableLap;
+  els.restartBtn.disabled = !hasPlayableLap;
+  els.stepBackBtn.disabled = !hasPlayableLap;
+  els.stepForwardBtn.disabled = !hasPlayableLap;
+  els.timeline.disabled = !hasPlayableLap;
   els.readyLapCount.textContent = `${state.readyLaps.length} direct ${state.readyLaps.length === 1 ? "upload" : "uploads"}`;
   els.audioSourceSelect.value = state.audioSource;
   renderSlotSelectors();
@@ -683,7 +710,7 @@ function saveCommentsReport() {
 
 function setPlaying(nextPlaying) {
   state.isPlaying = Boolean(nextPlaying && (lapForSlot("A") || lapForSlot("B")));
-  els.playBtn.textContent = state.isPlaying ? "Pause" : "Play";
+  setPlayButtonState(els.playBtn, state.isPlaying, "comparison");
   if (state.isPlaying) {
     state.baseRelTime = state.relTime;
     state.playStartedAt = performance.now();
@@ -995,9 +1022,12 @@ els.cutterSourceSelect.addEventListener("change", (event) => {
   loadCutterSource();
 });
 els.cutterVideo.addEventListener("timeupdate", updateCutterTime);
-els.cutterVideo.addEventListener("play", () => { els.cutterPlay.textContent = "Pause"; });
-els.cutterVideo.addEventListener("pause", () => { els.cutterPlay.textContent = "Play"; });
+els.cutterVideo.addEventListener("play", () => { setPlayButtonState(els.cutterPlay, true, "session"); });
+els.cutterVideo.addEventListener("pause", () => { setPlayButtonState(els.cutterPlay, false, "session"); });
 els.cutterPlay.addEventListener("click", () => {
+  if (els.cutterVideo.paused) els.cutterVideo.play(); else els.cutterVideo.pause();
+});
+els.cutterVideo.addEventListener("click", () => {
   if (els.cutterVideo.paused) els.cutterVideo.play(); else els.cutterVideo.pause();
 });
 els.cutterSoundToggle.addEventListener("change", (event) => {
@@ -1066,6 +1096,8 @@ els.nameB.addEventListener("change", (event) => renameSlotLap("B", event.target.
 els.nameA.addEventListener("input", (event) => previewSlotLapName("A", event.target.value));
 els.nameB.addEventListener("input", (event) => previewSlotLapName("B", event.target.value));
 els.playBtn.addEventListener("click", () => setPlaying(!state.isPlaying));
+els.videoA.addEventListener("click", () => setPlaying(!state.isPlaying));
+els.videoB.addEventListener("click", () => setPlaying(!state.isPlaying));
 els.restartBtn.addEventListener("click", () => seekComparison(0));
 els.stepBackBtn.addEventListener("click", () => seekComparison(state.relTime - 1 / 30));
 els.stepForwardBtn.addEventListener("click", () => seekComparison(state.relTime + 1 / 30));
@@ -1150,3 +1182,5 @@ els.exportBtn.addEventListener("click", () => {
 
 renderCutter();
 renderComparison();
+setPlayButtonState(els.cutterPlay, false, "session");
+setPlayButtonState(els.playBtn, false, "comparison");
