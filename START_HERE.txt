@@ -1,6 +1,6 @@
 TRIDENT ONBOARD
 
-1. Open the private web address with the latest Chrome or Edge.
+1. Open https://valenciabattari.github.io/trident-onboard/ with the latest Chrome or Edge.
 2. Use Cut laps for a complete session, or Compare to load two finished laps.
 
 Videos remain on your computer and are never uploaded.

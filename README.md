@@ -43,7 +43,7 @@ Alternatively, open **Compare** and choose **Load ready-made laps** to select tw
 
 ## Sharing the app
 
-The published Sites URL is access-controlled. Add a viewer by email to grant access, and remove that viewer when the test is finished. Videos are selected from each user's computer and are never uploaded.
+The public GitHub Pages version is available at `https://valenciabattari.github.io/trident-onboard/`. Videos are selected from each user's computer and are never uploaded.
 
 ## Build
 
