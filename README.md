@@ -50,7 +50,7 @@ The public GitHub Pages version is available at `https://valenciabattari.github.
 
 Analytics support is built in but remains disabled until a GA4 Measurement ID is configured. Set `measurementId` in `src/analytics-config.js` to the ID from the Google Analytics web data stream, for example `G-XXXXXXXXXX`.
 
-The Google tag loads only after the visitor allows analytics. GA4 records its standard page and engagement metrics plus product events for workspace views, video selection, finish-line marks, briefing modes, comparison notes, guide opens and mini-test results. File names, briefing content and answer selections are never sent.
+For this private demo, the Google tag loads automatically and has no visible consent interface. Google Signals and advertising personalization remain disabled. GA4 records its standard page and engagement metrics plus product events for workspace views, video selection, finish-line marks, briefing modes, comparison notes, guide opens and mini-test results. File names, briefing content and answer selections are never sent. Review the privacy approach before using the site as a public production service.
 
 ## Build
 
