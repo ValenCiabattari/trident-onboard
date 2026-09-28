@@ -20,6 +20,7 @@
           <label class="button primary" for="videoInput">Load onboard video</label>
           <input id="videoInput" type="file" accept="video/*" multiple />
           <button id="exportBtn" class="button secondary" type="button">Export review</button>
+          <button id="analyticsPreferencesBtn" class="text-button analytics-preferences-button" type="button" hidden>Privacy</button>
         </div>
       </header>
 
@@ -449,6 +450,20 @@
       </main>
     </section>
 
+    <section id="analyticsConsent" class="analytics-consent" role="dialog" aria-modal="true" aria-labelledby="analyticsConsentTitle" hidden>
+      <div>
+        <p class="eyebrow">Privacy</p>
+        <h2 id="analyticsConsentTitle">Allow usage analytics?</h2>
+        <p>Help us understand visits, engagement time and which demo tools are used. No video names, briefing text or answers are collected.</p>
+      </div>
+      <div class="analytics-consent-actions">
+        <button id="analyticsDeclineBtn" class="button secondary" type="button">Decline</button>
+        <button id="analyticsAcceptBtn" class="button primary" type="button">Allow analytics</button>
+      </div>
+    </section>
+
+    <script src="src/analytics-config.js"></script>
+    <script src="src/analytics.js"></script>
     <script src="src/app.js"></script>
   </body>
 </html>

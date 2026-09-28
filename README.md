@@ -46,6 +46,12 @@ Alternatively, open **Compare** and choose **Load ready-made laps** to select tw
 
 The public GitHub Pages version is available at `https://valenciabattari.github.io/trident-onboard/`. Videos are selected from each user's computer and are never uploaded.
 
+## Google Analytics 4
+
+Analytics support is built in but remains disabled until a GA4 Measurement ID is configured. Set `measurementId` in `src/analytics-config.js` to the ID from the Google Analytics web data stream, for example `G-XXXXXXXXXX`.
+
+The Google tag loads only after the visitor allows analytics. GA4 records its standard page and engagement metrics plus product events for workspace views, video selection, finish-line marks, briefing modes, comparison notes, guide opens and mini-test results. File names, briefing content and answer selections are never sent.
+
 ## Build
 
 Run `npm run build` to create the static `dist` directory used for publication.

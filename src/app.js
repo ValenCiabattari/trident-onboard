@@ -4,6 +4,10 @@ const ASSET_STORE_NAME = "assets";
 const CUSTOM_MAP_ASSET_KEY = "custom-circuit-map";
 let storageAvailable = true;
 
+function trackAnalytics(eventName, parameters = {}) {
+  window.tridentAnalytics?.track(eventName, parameters);
+}
+
 function loadStoredWorkspace() {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
@@ -548,10 +552,12 @@ function setView(view) {
     setPlaying(false);
     renderBriefing();
   }
+  trackAnalytics("workspace_view", { workspace_section: view });
 }
 
 function addFiles(files) {
   const videos = Array.from(files).filter((file) => file.type.startsWith("video/"));
+  if (videos.length) trackAnalytics("video_selected", { video_source: "full_session", video_count: videos.length });
   for (const file of videos) {
     const url = URL.createObjectURL(file);
     const probe = document.createElement("video");
@@ -581,6 +587,7 @@ function addFiles(files) {
 
 function addReadyLapFiles(files) {
   const videos = Array.from(files).filter((file) => file.type.startsWith("video/"));
+  if (videos.length) trackAnalytics("video_selected", { video_source: "ready_laps", video_count: videos.length });
   const addedIds = [];
 
   for (const file of videos) {
@@ -747,6 +754,7 @@ function markCrossing() {
     return;
   }
   source.crossings.push({ id: uid(), time, addedAt: Date.now() });
+  trackAnalytics("finish_line_marked", { crossing_count: source.crossings.length });
   chooseDefaultSlots();
   renderCutter();
   renderComparison();
@@ -1260,6 +1268,7 @@ function setBriefingScreen(screen) {
   els.addHotspotBtn.textContent = "Add point";
   persistWorkspace();
   renderBriefing();
+  trackAnalytics("briefing_mode_view", { briefing_mode: screen });
 }
 
 function toggleLearnedCorner() {
@@ -1323,6 +1332,10 @@ function launchMiniTest() {
   updateTestTimer();
   state.testTimerId = setInterval(updateTestTimer, 100);
   renderTestQuestion();
+  trackAnalytics("mini_test_started", {
+    briefing_mode: state.briefingMode,
+    question_count: questions.length,
+  });
 }
 
 function closeMiniTest() {
@@ -1350,6 +1363,12 @@ function answerMiniTest(answerIndex) {
   state.testTimerId = null;
   els.testTimer.textContent = formatTestTime(elapsed);
   els.testQuestionCard.hidden = true;
+  trackAnalytics("mini_test_completed", {
+    briefing_mode: run.mode,
+    question_count: run.questions.length,
+    result: run.errorCount > 0 ? "failed" : "passed",
+    elapsed_seconds: Math.round(elapsed / 100) / 10,
+  });
 
   if (run.errorCount > 0) {
     state.testStatus[run.mode] = "failed";
@@ -2249,6 +2268,7 @@ els.addNoteBtn.addEventListener("click", () => {
   const review = currentReview();
   if (!text || !review) return;
   review.notes.push({ id: uid(), time: state.relTime, type: els.noteType.value, text });
+  trackAnalytics("comparison_note_added", { note_type: els.noteType.value });
   review.updatedAt = new Date().toISOString();
   persistWorkspace();
   els.noteText.value = "";
